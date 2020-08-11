@@ -1,0 +1,20 @@
+[package]
+name = "rocky"
+version = "0.1.0"
+authors = ["dkos <kosdejan@yahoo.com>"]
+edition = "2018"
+categories = ["http"]
+description = "RocksDb as a service"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+structopt = "0.3"
+actix-web = "2.0"
+actix-rt = "1.0"
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+simplelog = "0.7.6"
+log = "0.4.8"
