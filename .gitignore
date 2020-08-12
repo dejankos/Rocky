@@ -37,3 +37,6 @@ cmake-build-*/
 
 # IntelliJ
 out/
+
+# db
+/db/

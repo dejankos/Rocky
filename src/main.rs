@@ -1,26 +1,27 @@
+#[macro_use]
+extern crate log;
+
+mod config;
 mod db;
 
-use actix_web::{HttpRequest, HttpResponse, HttpServer, App, web};
+use crate::db::Db;
 use actix_web::get;
 use actix_web::middleware::Logger;
+use actix_web::{web, App, HttpRequest, HttpServer};
 use log::LevelFilter;
-use simplelog::{Config, TerminalMode, TermLogger};
-use crate::db::Db;
-use std::borrow::BorrowMut;
+use simplelog::{Config, TermLogger, TerminalMode};
+
+use crate::config::load_db_config;
 
 #[get("/")]
-async fn hello(
-    req: HttpRequest,
-    db:  web::Data<Db>
-) -> String {
+async fn hello(_req: HttpRequest, db: web::Data<Db>) -> String {
     db.put("a", "b");
 
     let option = db.get("a");
 
     if let Some(v) = option {
         String::from_utf8(v).unwrap_or("ups".to_string())
-    }
-    else {
+    } else {
         "nothing".to_string()
     }
 }
@@ -31,8 +32,10 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "1");
     TermLogger::init(LevelFilter::Info, Config::default(), TerminalMode::Mixed).unwrap();
 
-    let db = web::Data::new(Db::new());
+    let db_cfg = load_db_config().expect("Failed to start - can't load db config");
+    info!("Db config = {:?}", db_cfg);
 
+    let db = web::Data::new(Db::new(db_cfg.path.as_str()));
 
     HttpServer::new(move || {
         App::new()
@@ -40,8 +43,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(db.clone())
             .service(hello)
     })
-        .bind("127.0.0.1:8080")?
-        .shutdown_timeout(10)
-        .run()
-        .await
+    .bind("127.0.0.1:8080")?
+    .shutdown_timeout(10)
+    .run()
+    .await
 }

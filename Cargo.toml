@@ -20,5 +20,5 @@ simplelog = "0.7.6"
 log = "0.4.8"
 
 rocksdb = "0.14.0"
-
+confy = "0.4.0"
 
