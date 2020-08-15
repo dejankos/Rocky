@@ -42,3 +42,10 @@ pub fn load_service_config() -> Result<ServiceConfig, ConfyError> {
     confy::load_path(Path::new("./service_config.toml"))
 }
 
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn load() {}
+
+}

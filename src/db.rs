@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use rocksdb::{Error, DB};
 
 use crate::config::DbConfig;
+use std::sync::RwLock;
+
+const ROOT_DB_NAME: &'static str = "root";
 
 pub struct Db {
     rock: DB,
@@ -10,7 +13,7 @@ pub struct Db {
 
 #[derive(Default)]
 pub struct DbManager {
-    dbs: HashMap<String, Db>,
+    dbs: RwLock<HashMap<String, Db>>,
     config: DbConfig,
 }
 
@@ -37,13 +40,34 @@ impl DbManager {
     pub fn new(config: DbConfig) -> Self {
         DbManager {
             config,
-            ..Default::default()
+            dbs: RwLock::new(HashMap::new())
         }
     }
 
-    pub fn open(&mut self, db_name: String) -> Result<(), Error> {
-        let db = Db::new(self.config.path.as_str())?;
-        self.dbs.insert(db_name, db);
+    pub fn open(&self, db_name: String) -> Result<(), Error> {
+        if self.is_present(&db_name) {
+            error!("Db {} already exists", &db_name);
+        }
+
+        info!("before insert ");
+
+        let db = Db::new(format!("{}/{}", self.config.path, db_name).as_str())?;
+        info!("after db open");
+
+        let mut guard = self.dbs.write().unwrap();
+        guard.insert(db_name, db);
+        info!("data size = {}", guard.len());
+
+
+        info!("after insert ");
+
         Ok(())
     }
+
+    fn is_present(&self, db_name: &String) -> bool {
+       self.dbs.read().unwrap().contains_key(db_name)
+    }
+
+
+
 }
