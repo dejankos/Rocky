@@ -12,6 +12,13 @@ const ROOT_DB_NAME: &str = "root";
 type Safe<T> = Arc<ShardedLock<T>>;
 type DbResult<T> = Result<T, Error>;
 
+trait RWLock {
+    type Item;
+
+    fn r_lock(&self) -> ShardedLockReadGuard<'_, Self::Item>;
+    fn w_lock(&self) -> ShardedLockWriteGuard<'_, Self::Item>;
+}
+
 pub struct Db {
     rock: Safe<DB>,
 }
@@ -20,6 +27,19 @@ pub struct DbManager {
     config: DbConfig,
     root_db: Db,
     dbs: Safe<HashMap<String, Db>>,
+}
+
+
+impl RWLock for Db {
+    type Item = DB;
+
+    fn r_lock(&self) -> ShardedLockReadGuard<'_, Self::Item> {
+        self.rock.read().expect("Can't acquire read lock")
+    }
+
+    fn w_lock(&self) -> ShardedLockWriteGuard<'_, Self::Item> {
+        self.rock.write().expect("Can't acquire write lock")
+    }
 }
 
 impl Db {
@@ -44,15 +64,20 @@ impl Db {
     pub fn remove(&self, key: &str) -> DbResult<()> {
         self.w_lock().delete(key)
     }
+}
 
-    pub fn r_lock(&self) -> ShardedLockReadGuard<'_, DB> {
-        self.rock.read().expect("Can't acquire read lock")
+impl RWLock for DbManager {
+    type Item = HashMap<String, Db>;
+
+    fn r_lock(&self) -> ShardedLockReadGuard<'_, Self::Item> {
+        self.dbs.read().expect("Can't acquire read lock")
     }
 
-    fn w_lock(&self) -> ShardedLockWriteGuard<'_, DB> {
-        self.rock.write().expect("Can't acquire write lock")
+    fn w_lock(&self) -> ShardedLockWriteGuard<'_, Self::Item> {
+        self.dbs.write().expect("Can't acquire write lock")
     }
 }
+
 
 impl DbManager {
     pub fn new(config: DbConfig) -> Result<Self, Error> {
@@ -88,22 +113,19 @@ impl DbManager {
     pub fn open(&self, db_name: String) -> DbResult<()> {
         if self.is_present(&db_name) {
             error!("Db {} already exists", &db_name);
+            //TODO handle
+            Ok(())
+        } else {
+            let path = format!("{}/{}", self.config.path, db_name);
+            let db = Db::new(&path)?;
+
+            self.root_db.put(&db_name, &path)?;
+            self.w_lock().insert(db_name, db);
+            Ok(())
         }
-
-        let path = format!("{}/{}", self.config.path, db_name);
-        let db = Db::new(&path)?;
-
-        self.root_db.put(&db_name, &path)?;
-        let v = self.root_db.get(&db_name);
-        info!("val after open = {:?}", v);
-
-        let mut guard = self.dbs.write().unwrap();
-        guard.insert(db_name, db);
-
-        Ok(())
     }
 
     fn is_present(&self, db_name: &str) -> bool {
-        self.dbs.read().unwrap().contains_key(db_name)
+        self.r_lock().contains_key(db_name)
     }
 }
