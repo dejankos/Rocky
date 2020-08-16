@@ -1,5 +1,3 @@
-
-
 use confy::ConfyError;
 use serde::{Deserialize, Serialize};
 

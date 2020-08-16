@@ -1,35 +1,31 @@
-
 use std::collections::HashMap;
-
 use std::path::Path;
-
-
-use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
-use rocksdb::{DBIterator, Error, IteratorMode, DB};
-
-use crate::config::DbConfig;
 use std::sync::Arc;
 
-const ROOT_DB_NAME: &'static str = "root";
+use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
+use rocksdb::{DB, Error, IteratorMode};
+
+use crate::config::DbConfig;
+
+const ROOT_DB_NAME: &str = "root";
+
+type Safe<T> = Arc<ShardedLock<T>>;
+type DbResult<T> = Result<T, Error>;
 
 pub struct Db {
-    rock: Arc<ShardedLock<DB>>,
+    rock: Safe<DB>,
 }
 
 pub struct DbManager {
     config: DbConfig,
     root_db: Db,
-    dbs: ShardedLock<HashMap<String, Db>>,
-}
-
-struct DbSnapshot<'a> {
-    ss: DBIterator<'a>,
+    dbs: Safe<HashMap<String, Db>>,
 }
 
 impl Db {
-    pub fn new<P>(path: P) -> Result<Self, Error>
-    where
-        P: AsRef<Path>,
+    pub fn new<P>(path: P) -> DbResult<Self>
+        where
+            P: AsRef<Path>,
     {
         let rock = DB::open_default(path)?;
         Ok(Db {
@@ -37,16 +33,16 @@ impl Db {
         })
     }
 
-    pub fn put(&self, key: &str, val: &str) -> Result<(), Error> {
+    pub fn put(&self, key: &str, val: &str) -> DbResult<()> {
         self.w_lock().put(key, val)
     }
 
-    pub fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
+    pub fn get(&self, key: &str) -> DbResult<Option<Vec<u8>>> {
         self.r_lock().get(key)
     }
 
-    pub fn remove(&self, key: &str) {
-        self.w_lock().delete(key);
+    pub fn remove(&self, key: &str) -> DbResult<()> {
+        self.w_lock().delete(key)
     }
 
     pub fn r_lock(&self) -> ShardedLockReadGuard<'_, DB> {
@@ -64,16 +60,13 @@ impl DbManager {
         Ok(DbManager {
             config,
             root_db,
-            dbs: ShardedLock::new(HashMap::new()),
+            dbs: Arc::new(ShardedLock::new(HashMap::new())),
         })
     }
 
-    pub fn init(&self) -> Result<(), Error> {
-        info!("Init");
-
-        let v = self.root_db.get("baza5");
-        info!("v = {:?}", v);
-
+    pub fn init(&self) -> DbResult<()> {
+        info!("Initializing dbs ...");
+        //TODO db iterator
         self.root_db
             .r_lock()
             .iterator(IteratorMode::Start)
@@ -92,7 +85,7 @@ impl DbManager {
         Ok(())
     }
 
-    pub fn open(&self, db_name: String) -> Result<(), Error> {
+    pub fn open(&self, db_name: String) -> DbResult<()> {
         if self.is_present(&db_name) {
             error!("Db {} already exists", &db_name);
         }
@@ -100,7 +93,7 @@ impl DbManager {
         let path = format!("{}/{}", self.config.path, db_name);
         let db = Db::new(&path)?;
 
-        self.root_db.put(&db_name, &path);
+        self.root_db.put(&db_name, &path)?;
         let v = self.root_db.get(&db_name);
         info!("val after open = {:?}", v);
 
@@ -110,7 +103,7 @@ impl DbManager {
         Ok(())
     }
 
-    fn is_present(&self, db_name: &String) -> bool {
+    fn is_present(&self, db_name: &str) -> bool {
         self.dbs.read().unwrap().contains_key(db_name)
     }
 }

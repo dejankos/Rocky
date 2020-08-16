@@ -6,8 +6,8 @@ mod db;
 
 use crate::db::{Db, DbManager};
 use actix_web::middleware::Logger;
-use actix_web::{get, post, HttpResponse};
-use actix_web::{web, App, HttpRequest, HttpServer};
+use actix_web::{post, HttpResponse};
+use actix_web::{web, App, HttpServer};
 use log::LevelFilter;
 use simplelog::{Config, TermLogger, TerminalMode};
 
