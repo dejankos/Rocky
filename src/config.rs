@@ -1,8 +1,7 @@
-use std::path::Path;
+
 
 use confy::ConfyError;
 use serde::{Deserialize, Serialize};
-
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ServiceConfig {
@@ -35,11 +34,11 @@ impl Default for ServiceConfig {
 }
 
 pub fn load_db_config() -> Result<DbConfig, ConfyError> {
-    confy::load_path(Path::new("./db_config.toml"))
+    confy::load_path("./db_config.toml")
 }
 
 pub fn load_service_config() -> Result<ServiceConfig, ConfyError> {
-    confy::load_path(Path::new("./service_config.toml"))
+    confy::load_path("./service_config.toml")
 }
 
 #[cfg(test)]
@@ -47,5 +46,4 @@ mod tests {
 
     #[test]
     fn load() {}
-
 }

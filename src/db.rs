@@ -1,47 +1,95 @@
+
 use std::collections::HashMap;
 
-use rocksdb::{Error, DB};
+use std::path::Path;
+
+
+use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
+use rocksdb::{DBIterator, Error, IteratorMode, DB};
 
 use crate::config::DbConfig;
-use std::sync::RwLock;
+use std::sync::Arc;
 
 const ROOT_DB_NAME: &'static str = "root";
 
 pub struct Db {
-    rock: DB,
+    rock: Arc<ShardedLock<DB>>,
 }
 
-#[derive(Default)]
 pub struct DbManager {
-    dbs: RwLock<HashMap<String, Db>>,
     config: DbConfig,
+    root_db: Db,
+    dbs: ShardedLock<HashMap<String, Db>>,
+}
+
+struct DbSnapshot<'a> {
+    ss: DBIterator<'a>,
 }
 
 impl Db {
-    pub fn new(path: &str) -> Result<Self, Error> {
+    pub fn new<P>(path: P) -> Result<Self, Error>
+    where
+        P: AsRef<Path>,
+    {
         let rock = DB::open_default(path)?;
-        Ok(Db { rock })
+        Ok(Db {
+            rock: Arc::new(ShardedLock::new(rock)),
+        })
     }
 
-    pub fn put(&self, key: &str, val: &str) {
-        self.rock.put(key, val).unwrap();
+    pub fn put(&self, key: &str, val: &str) -> Result<(), Error> {
+        self.w_lock().put(key, val)
     }
 
-    pub fn get(&self, key: &str) -> Option<Vec<u8>> {
-        self.rock.get(key).unwrap()
+    pub fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Error> {
+        self.r_lock().get(key)
     }
 
     pub fn remove(&self, key: &str) {
-        self.rock.delete(key);
+        self.w_lock().delete(key);
+    }
+
+    pub fn r_lock(&self) -> ShardedLockReadGuard<'_, DB> {
+        self.rock.read().expect("Can't acquire read lock")
+    }
+
+    fn w_lock(&self) -> ShardedLockWriteGuard<'_, DB> {
+        self.rock.write().expect("Can't acquire write lock")
     }
 }
 
 impl DbManager {
-    pub fn new(config: DbConfig) -> Self {
-        DbManager {
+    pub fn new(config: DbConfig) -> Result<Self, Error> {
+        let root_db = Db::new(format!("{}/{}", config.path, ROOT_DB_NAME))?;
+        Ok(DbManager {
             config,
-            dbs: RwLock::new(HashMap::new())
-        }
+            root_db,
+            dbs: ShardedLock::new(HashMap::new()),
+        })
+    }
+
+    pub fn init(&self) -> Result<(), Error> {
+        info!("Init");
+
+        let v = self.root_db.get("baza5");
+        info!("v = {:?}", v);
+
+        self.root_db
+            .r_lock()
+            .iterator(IteratorMode::Start)
+            .map(|(k, v)| {
+                (
+                    String::from_utf8(k.to_vec()).expect("Failed to read from db"),
+                    String::from_utf8(v.to_vec()).expect("Failed to read from db"),
+                )
+            })
+            .for_each(|(name, path)| {
+                info!("Opening Db = {} on path = {}", &name, &path);
+                let db = Db::new(path).expect("Unable to open db");
+                self.dbs.write().unwrap().insert(name, db);
+            });
+
+        Ok(())
     }
 
     pub fn open(&self, db_name: String) -> Result<(), Error> {
@@ -49,25 +97,20 @@ impl DbManager {
             error!("Db {} already exists", &db_name);
         }
 
-        info!("before insert ");
+        let path = format!("{}/{}", self.config.path, db_name);
+        let db = Db::new(&path)?;
 
-        let db = Db::new(format!("{}/{}", self.config.path, db_name).as_str())?;
-        info!("after db open");
+        self.root_db.put(&db_name, &path);
+        let v = self.root_db.get(&db_name);
+        info!("val after open = {:?}", v);
 
         let mut guard = self.dbs.write().unwrap();
         guard.insert(db_name, db);
-        info!("data size = {}", guard.len());
-
-
-        info!("after insert ");
 
         Ok(())
     }
 
     fn is_present(&self, db_name: &String) -> bool {
-       self.dbs.read().unwrap().contains_key(db_name)
+        self.dbs.read().unwrap().contains_key(db_name)
     }
-
-
-
 }
