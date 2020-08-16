@@ -1,19 +1,20 @@
-use std::{error, fmt};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::{error, fmt};
 
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
-use rocksdb::{DB, Error, IteratorMode, Options};
+use executors::threadpool_executor::ThreadPoolExecutor;
+use executors::{Executor};
+use rocksdb::{Error, IteratorMode, Options, DB};
 use serde::export::Formatter;
 
 use crate::config::DbConfig;
-use executors::threadpool_executor::ThreadPoolExecutor;
 
 const ROOT_DB_NAME: &str = "root";
 
-type Safe<T> = Arc<ShardedLock<T>>;
+type SafeRW<T> = Arc<ShardedLock<T>>;
 type DbResult<T> = Result<T, DbError>;
 
 trait RWLock {
@@ -24,14 +25,14 @@ trait RWLock {
 }
 
 pub struct Db {
-    rock: Safe<DB>,
+    rock: SafeRW<DB>,
 }
 
 pub struct DbManager {
     config: DbConfig,
     root_db: Db,
-    dbs: Safe<HashMap<String, Db>>,
-  //  executor: ThreadPoolExecutor
+    dbs: SafeRW<HashMap<String, Db>>,
+    executor: Mutex<ThreadPoolExecutor>,
 }
 
 #[derive(Debug)]
@@ -78,31 +79,32 @@ impl RWLock for Db {
 
 impl Db {
     pub fn new<P>(path: P) -> DbResult<Self>
-        where
-            P: AsRef<Path>,
+    where
+        P: AsRef<Path>,
     {
-        let rock = DB::open_default(path).map_err(|e| DbError::from(e))?;
+        let rock = DB::open_default(path).map_err(DbError::from)?;
         Ok(Db {
             rock: Arc::new(ShardedLock::new(rock)),
         })
     }
 
     pub fn put(&self, key: &str, val: &str) -> DbResult<()> {
-        self.w_lock().put(key, val).map_err(|e| DbError::from(e))
+        self.w_lock().put(key, val).map_err(DbError::from)
     }
 
     pub fn get(&self, key: &str) -> DbResult<Option<Vec<u8>>> {
-        self.r_lock().get(key).map_err(|e| DbError::from(e))
+        self.r_lock().get(key).map_err(DbError::from)
     }
 
     pub fn remove(&self, key: &str) -> DbResult<()> {
-        self.w_lock().delete(key).map_err(|e| DbError::from(e))
+        self.w_lock().delete(key).map_err(DbError::from)
     }
 
     pub fn close<P>(&self, path: P) -> DbResult<()>
-        where P: AsRef<Path>
+    where
+        P: AsRef<Path>,
     {
-        DB::destroy(&Options::default(), path).map_err(|e| DbError::from(e))
+        DB::destroy(&Options::default(), path).map_err(DbError::from)
     }
 }
 
@@ -125,7 +127,7 @@ impl DbManager {
             config,
             root_db,
             dbs: Arc::new(ShardedLock::new(HashMap::new())),
-            //executor: ThreadPoolExecutor::new(1)
+            executor: Mutex::new(ThreadPoolExecutor::new(1)),
         })
     }
 
@@ -153,9 +155,10 @@ impl DbManager {
     pub fn open(&self, db_name: String) -> DbResult<()> {
         if self.is_present(&db_name) {
             debug!("Db {} already exists", &db_name);
-            Err(
-                DbError::Validation(format!("Database {} already exists", db_name))
-            )
+            Err(DbError::Validation(format!(
+                "Database {} already exists",
+                db_name
+            )))
         } else {
             let path = format!("{}/{}", self.config.path, db_name);
             let db = Db::new(&path)?;
@@ -166,11 +169,33 @@ impl DbManager {
         }
     }
 
-    pub fn close(&self) {
+    pub fn close(&self, db_name: String) -> DbResult<()> {
+        if self.not_present(&db_name) {
+            Err(DbError::Validation(format!(
+                "Can't close {} db - doesn't exist",
+                &db_name
+            )))
+        } else {
+            if let Some(db) = self.w_lock().remove(&db_name) {
+                info!("Closing db = {} ...", &db_name);
+                self.executor
+                    .lock()
+                    .expect("Failed to acquire executor lock")
+                    .execute(move || match db.close(&db_name) {
+                        Ok(_) => info!("Db = {} closed", &db_name),
+                        Err(e) => error!("Error closing db = {}, e = {}", &db_name, e),
+                    });
+            }
 
+            Ok(())
+        }
     }
 
     fn is_present(&self, db_name: &str) -> bool {
         self.r_lock().contains_key(db_name)
+    }
+
+    fn not_present(&self, db_name: &str) -> bool {
+        !self.is_present(db_name)
     }
 }
