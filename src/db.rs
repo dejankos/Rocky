@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::Display;
+
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{error, fmt};
 
+use actix_web::web::Bytes;
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 use executors::threadpool_executor::ThreadPoolExecutor;
 use executors::Executor;
@@ -11,7 +13,6 @@ use rocksdb::{Error, IteratorMode, Options, DB};
 use serde::export::Formatter;
 
 use crate::config::DbConfig;
-use actix_web::web::Bytes;
 
 const ROOT_DB_NAME: &str = "root";
 
@@ -198,10 +199,21 @@ impl DbManager {
     pub async fn store(&self, db_name: &str, key: &str, val: Bytes) -> DbResult<()> {
         match self.w_lock().get(db_name) {
             Some(db) => db.put(&key, val),
-            _ => Err(DbError::Validation(format!(
-                "Db {} - doesn't exist",
-                &db_name
-            ))),
+            None => Err(not_exists(db_name)),
+        }
+    }
+
+    pub async fn read(&self, db_name: &str, key: &str) -> DbResult<Option<Vec<u8>>> {
+        match self.r_lock().get(db_name) {
+            Some(db) => db.get(&key),
+            None => Err(not_exists(db_name)),
+        }
+    }
+
+    pub async fn remove(&self, db_name: &str, key: &str) -> DbResult<()> {
+        match self.w_lock().get(db_name) {
+            Some(db) => db.remove(&key),
+            None => Err(not_exists(db_name)),
         }
     }
 
@@ -212,4 +224,8 @@ impl DbManager {
     fn not_present(&self, db_name: &str) -> bool {
         !self.is_present(db_name)
     }
+}
+
+fn not_exists(db_name: &str) -> DbError {
+    DbError::Validation(format!("Db {} - doesn't exist", &db_name))
 }

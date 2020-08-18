@@ -1,17 +1,16 @@
 #[macro_use]
 extern crate log;
 
-use actix_web::{delete, post, put, HttpResponse, ResponseError};
-use actix_web::{web, App, HttpServer};
-
 use actix_web::middleware::Logger;
+use actix_web::web::Bytes;
+use actix_web::{delete, get, post, put, HttpResponse, ResponseError};
+use actix_web::{web, App, HttpServer};
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 use simplelog::{Config, TermLogger, TerminalMode};
 
 use crate::config::load_db_config;
 use crate::db::{DbError, DbManager};
-use actix_web::web::Bytes;
 
 mod config;
 mod db;
@@ -63,6 +62,28 @@ async fn store(
     Ok(HttpResponse::Ok().finish())
 }
 
+#[get("/{db_name}/{key}")]
+async fn read(p_val: web::Path<PathVal>, db_man: web::Data<DbManager>) -> Response<HttpResponse> {
+    let res = db_man
+        .read(p_val.db_name.as_str(), p_val.key.as_str())
+        .await?;
+
+    let mut http_res = HttpResponse::Ok();
+    Ok(if let Some(r) = res {
+        http_res.body(r)
+    } else {
+        http_res.finish()
+    })
+}
+
+#[delete("/{db_name}/{key}")]
+async fn remove(p_val: web::Path<PathVal>, db_man: web::Data<DbManager>) -> Response<HttpResponse> {
+    db_man
+        .remove(p_val.db_name.as_str(), p_val.key.as_str())
+        .await?;
+    Ok(HttpResponse::Ok().finish())
+}
+
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=debug");
@@ -83,6 +104,8 @@ async fn main() -> std::io::Result<()> {
             .service(open)
             .service(close)
             .service(store)
+            .service(read)
+            .service(remove)
     })
     .bind("127.0.0.1:8080")?
     .shutdown_timeout(60)
