@@ -6,11 +6,12 @@ use std::{error, fmt};
 
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 use executors::threadpool_executor::ThreadPoolExecutor;
-use executors::{Executor};
+use executors::Executor;
 use rocksdb::{Error, IteratorMode, Options, DB};
 use serde::export::Formatter;
 
 use crate::config::DbConfig;
+use actix_web::web::Bytes;
 
 const ROOT_DB_NAME: &str = "root";
 
@@ -24,7 +25,7 @@ trait RWLock {
     fn w_lock(&self) -> ShardedLockWriteGuard<'_, Self::Item>;
 }
 
-pub struct Db {
+struct Db {
     rock: SafeRW<DB>,
 }
 
@@ -82,13 +83,16 @@ impl Db {
     where
         P: AsRef<Path>,
     {
-        let rock = DB::open_default(path).map_err(DbError::from)?;
+        let rock = DB::open_default(path)?;
         Ok(Db {
             rock: Arc::new(ShardedLock::new(rock)),
         })
     }
 
-    pub fn put(&self, key: &str, val: &str) -> DbResult<()> {
+    pub fn put<V>(&self, key: &str, val: V) -> DbResult<()>
+    where
+        V: AsRef<[u8]>,
+    {
         self.w_lock().put(key, val).map_err(DbError::from)
     }
 
@@ -152,7 +156,7 @@ impl DbManager {
         Ok(())
     }
 
-    pub fn open(&self, db_name: String) -> DbResult<()> {
+    pub async fn open(&self, db_name: String) -> DbResult<()> {
         if self.is_present(&db_name) {
             debug!("Db {} already exists", &db_name);
             Err(DbError::Validation(format!(
@@ -169,7 +173,7 @@ impl DbManager {
         }
     }
 
-    pub fn close(&self, db_name: String) -> DbResult<()> {
+    pub async fn close(&self, db_name: String) -> DbResult<()> {
         if self.not_present(&db_name) {
             Err(DbError::Validation(format!(
                 "Can't close {} db - doesn't exist",
@@ -188,6 +192,16 @@ impl DbManager {
             }
 
             Ok(())
+        }
+    }
+
+    pub async fn store(&self, db_name: &str, key: &str, val: Bytes) -> DbResult<()> {
+        match self.w_lock().get(db_name) {
+            Some(db) => db.put(&key, val),
+            _ => Err(DbError::Validation(format!(
+                "Db {} - doesn't exist",
+                &db_name
+            ))),
         }
     }
 
