@@ -80,7 +80,7 @@ impl RWLock for Db {
 }
 
 impl Db {
-    pub fn new<P>(path: P) -> DbResult<Self>
+    fn new<P>(path: P) -> DbResult<Self>
     where
         P: AsRef<Path>,
     {
@@ -90,22 +90,22 @@ impl Db {
         })
     }
 
-    pub fn put<V>(&self, key: &str, val: V) -> DbResult<()>
+    fn put<V>(&self, key: &str, val: V) -> DbResult<()>
     where
         V: AsRef<[u8]>,
     {
         self.w_lock().put(key, val).map_err(DbError::from)
     }
 
-    pub fn get(&self, key: &str) -> DbResult<Option<Vec<u8>>> {
+    fn get(&self, key: &str) -> DbResult<Option<Vec<u8>>> {
         self.r_lock().get(key).map_err(DbError::from)
     }
 
-    pub fn remove(&self, key: &str) -> DbResult<()> {
+    fn remove(&self, key: &str) -> DbResult<()> {
         self.w_lock().delete(key).map_err(DbError::from)
     }
 
-    pub fn close<P>(&self, path: P) -> DbResult<()>
+    fn close<P>(&self, path: P) -> DbResult<()>
     where
         P: AsRef<Path>,
     {
