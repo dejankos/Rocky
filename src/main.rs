@@ -11,6 +11,7 @@ use simplelog::{Config, TermLogger, TerminalMode};
 
 use crate::config::load_db_config;
 use crate::db::{DbError, DbManager};
+use actix_web::http::header::ContentType;
 
 mod config;
 mod db;
@@ -32,8 +33,10 @@ struct PathVal {
 impl ResponseError for DbError {
     fn error_response(&self) -> HttpResponse {
         match self {
+            DbError::Validation(s) | DbError::Serialization(s) => {
+                HttpResponse::BadRequest().json(Err::Msg(s.into()))
+            }
             DbError::Rocks(e) => HttpResponse::InternalServerError().json(Err::Msg(e.to_string())),
-            DbError::Validation(s) => HttpResponse::BadRequest().json(Err::Msg(s.into())),
         }
     }
 }
@@ -70,7 +73,7 @@ async fn read(p_val: web::Path<PathVal>, db_man: web::Data<DbManager>) -> Respon
 
     let mut http_res = HttpResponse::Ok();
     Ok(if let Some(r) = res {
-        http_res.body(r)
+        http_res.set(ContentType::octet_stream()).body(r)
     } else {
         http_res.finish()
     })

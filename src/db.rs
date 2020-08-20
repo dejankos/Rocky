@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{error, fmt};
@@ -11,6 +10,7 @@ use executors::threadpool_executor::ThreadPoolExecutor;
 use executors::Executor;
 use rocksdb::{Error, IteratorMode, Options, DB};
 use serde::export::Formatter;
+use serde::{Deserialize, Serialize};
 
 use crate::config::DbConfig;
 
@@ -30,6 +30,12 @@ struct Db {
     rock: SafeRW<DB>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct Data {
+    ttl: u64,
+    data: Vec<u8>,
+}
+
 pub struct DbManager {
     config: DbConfig,
     root_db: Db,
@@ -41,6 +47,7 @@ pub struct DbManager {
 pub enum DbError {
     Rocks(Error),
     Validation(String),
+    Serialization(String),
 }
 
 impl Display for DbError {
@@ -48,6 +55,7 @@ impl Display for DbError {
         match self {
             DbError::Rocks(e) => write!(f, "Db::RocksDb error: {}", e),
             DbError::Validation(s) => write!(f, "Db::Validation error: {}", s),
+            DbError::Serialization(s) => write!(f, "Db::Serialization error: {}", s),
         }
     }
 }
@@ -57,6 +65,7 @@ impl error::Error for DbError {
         match self {
             DbError::Rocks(e) => Some(e),
             DbError::Validation(_) => Some(self),
+            DbError::Serialization(_) => Some(self),
         }
     }
 }
@@ -64,6 +73,12 @@ impl error::Error for DbError {
 impl From<Error> for DbError {
     fn from(e: Error) -> Self {
         DbError::Rocks(e)
+    }
+}
+
+impl From<bincode::Error> for DbError {
+    fn from(e: bincode::Error) -> Self {
+        DbError::Serialization(e.as_ref().to_string())
     }
 }
 
@@ -197,15 +212,24 @@ impl DbManager {
     }
 
     pub async fn store(&self, db_name: &str, key: &str, val: Bytes) -> DbResult<()> {
+        let bytes = serialize(val, 0)?;
         match self.w_lock().get(db_name) {
-            Some(db) => db.put(&key, val),
+            Some(db) => db.put(&key, bytes),
             None => Err(not_exists(db_name)),
         }
     }
 
     pub async fn read(&self, db_name: &str, key: &str) -> DbResult<Option<Vec<u8>>> {
         match self.r_lock().get(db_name) {
-            Some(db) => db.get(&key),
+            Some(db) => {
+                if let Some(bytes) = db.get(&key)? {
+                    let data = deserialize(bytes)?;
+
+                    Ok(Some(data.data))
+                } else {
+                    Ok(None)
+                }
+            }
             None => Err(not_exists(db_name)),
         }
     }
@@ -228,4 +252,16 @@ impl DbManager {
 
 fn not_exists(db_name: &str) -> DbError {
     DbError::Validation(format!("Db {} - doesn't exist", &db_name))
+}
+
+fn serialize(data: Bytes, ttl: u64) -> DbResult<Vec<u8>> {
+    bincode::serialize(&Data {
+        ttl,
+        data: data.to_vec(),
+    })
+    .map_err(DbError::from)
+}
+
+fn deserialize(data: Vec<u8>) -> DbResult<Data> {
+    bincode::deserialize(&data).map_err(DbError::from)
 }
