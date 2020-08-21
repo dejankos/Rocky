@@ -32,7 +32,7 @@ struct Db {
 
 #[derive(Serialize, Deserialize)]
 struct Data {
-    ttl: u64,
+    ttl: u128,
     data: Vec<u8>,
 }
 
@@ -43,11 +43,13 @@ pub struct DbManager {
     executor: Mutex<ThreadPoolExecutor>,
 }
 
+//todo rename to service error or smth
 #[derive(Debug)]
 pub enum DbError {
     Rocks(Error),
     Validation(String),
     Serialization(String),
+    Conversion(String),
 }
 
 impl Display for DbError {
@@ -56,6 +58,7 @@ impl Display for DbError {
             DbError::Rocks(e) => write!(f, "Db::RocksDb error: {}", e),
             DbError::Validation(s) => write!(f, "Db::Validation error: {}", s),
             DbError::Serialization(s) => write!(f, "Db::Serialization error: {}", s),
+            DbError::Conversion(s) => write!(f, "Db::Conversion error: {}", s),
         }
     }
 }
@@ -66,6 +69,7 @@ impl error::Error for DbError {
             DbError::Rocks(e) => Some(e),
             DbError::Validation(_) => Some(self),
             DbError::Serialization(_) => Some(self),
+            DbError::Conversion(_) => Some(self),
         }
     }
 }
@@ -211,8 +215,8 @@ impl DbManager {
         }
     }
 
-    pub async fn store(&self, db_name: &str, key: &str, val: Bytes) -> DbResult<()> {
-        let bytes = serialize(val, 0)?;
+    pub async fn store(&self, db_name: &str, key: &str, val: Bytes, ttl: u128) -> DbResult<()> {
+        let bytes = serialize(val, ttl)?;
         match self.w_lock().get(db_name) {
             Some(db) => db.put(&key, bytes),
             None => Err(not_exists(db_name)),
@@ -254,7 +258,7 @@ fn not_exists(db_name: &str) -> DbError {
     DbError::Validation(format!("Db {} - doesn't exist", &db_name))
 }
 
-fn serialize(data: Bytes, ttl: u64) -> DbResult<Vec<u8>> {
+fn serialize(data: Bytes, ttl: u128) -> DbResult<Vec<u8>> {
     bincode::serialize(&Data {
         ttl,
         data: data.to_vec(),
