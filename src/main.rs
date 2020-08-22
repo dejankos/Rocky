@@ -2,6 +2,7 @@
 extern crate log;
 
 use std::error;
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use actix_web::http::header::ContentType;
@@ -11,12 +12,14 @@ use actix_web::web::Bytes;
 use actix_web::{delete, get, post, put, HttpRequest, HttpResponse, ResponseError};
 use actix_web::{web, App, HttpServer};
 use log::LevelFilter;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize};
 use simplelog::{Config, TermLogger, TerminalMode};
 
 use crate::config::load_db_config;
-use crate::db::{DbError, DbManager};
-use std::error::Error;
+use crate::db::DbManager;
+use crate::errors::{ApiError, DbError};
+
+mod errors;
 
 mod config;
 mod db;
@@ -25,13 +28,7 @@ type Response<T> = Result<T, DbError>;
 type Conversion<T> = Result<T, Box<dyn error::Error>>;
 
 const NO_TTL: u128 = 0;
-const TTL_HEADER: &'static str = "ttl";
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum Err {
-    Msg(String),
-}
+const TTL_HEADER: & str = "ttl";
 
 #[derive(Deserialize)]
 struct PathVal {
@@ -52,19 +49,15 @@ impl Expiration for HttpRequest {
     }
 }
 
-impl From<Box<dyn std::error::Error>> for DbError {
-    fn from(boxed: Box<dyn Error>) -> Self {
-        DbError::Conversion(boxed.to_string())
-    }
-}
-
 impl ResponseError for DbError {
     fn error_response(&self) -> HttpResponse {
         match self {
             DbError::Validation(s) | DbError::Serialization(s) | DbError::Conversion(s) => {
-                HttpResponse::BadRequest().json(Err::Msg(s.into()))
+                HttpResponse::BadRequest().json(ApiError::Msg(s.into()))
             }
-            DbError::Rocks(e) => HttpResponse::InternalServerError().json(Err::Msg(e.to_string())),
+            DbError::Rocks(e) => {
+                HttpResponse::InternalServerError().json(ApiError::Msg(e.to_string()))
+            }
         }
     }
 }
@@ -88,9 +81,13 @@ async fn store(
     req: HttpRequest,
     db_man: web::Data<DbManager>,
 ) -> Response<HttpResponse> {
-    let ttl = req.calc_expire()?;
     db_man
-        .store(p_val.db_name.as_str(), p_val.key.as_str(), body, ttl)
+        .store(
+            p_val.db_name.as_str(),
+            p_val.key.as_str(),
+            body,
+            req.calc_expire()?,
+        )
         .await?;
     Ok(HttpResponse::Ok().finish())
 }

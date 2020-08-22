@@ -1,18 +1,19 @@
 use std::collections::HashMap;
-use std::fmt::Display;
+
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::{error, fmt};
+
 
 use actix_web::web::Bytes;
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 use executors::threadpool_executor::ThreadPoolExecutor;
 use executors::Executor;
-use rocksdb::{Error, IteratorMode, Options, DB};
-use serde::export::Formatter;
+use rocksdb::{IteratorMode, Options, DB};
+
 use serde::{Deserialize, Serialize};
 
 use crate::config::DbConfig;
+use crate::errors::DbError;
 
 const ROOT_DB_NAME: &str = "root";
 
@@ -43,49 +44,6 @@ pub struct DbManager {
     executor: Mutex<ThreadPoolExecutor>,
 }
 
-//todo rename to service error or smth
-#[derive(Debug)]
-pub enum DbError {
-    Rocks(Error),
-    Validation(String),
-    Serialization(String),
-    Conversion(String),
-}
-
-impl Display for DbError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            DbError::Rocks(e) => write!(f, "Db::RocksDb error: {}", e),
-            DbError::Validation(s) => write!(f, "Db::Validation error: {}", s),
-            DbError::Serialization(s) => write!(f, "Db::Serialization error: {}", s),
-            DbError::Conversion(s) => write!(f, "Db::Conversion error: {}", s),
-        }
-    }
-}
-
-impl error::Error for DbError {
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match self {
-            DbError::Rocks(e) => Some(e),
-            DbError::Validation(_) => Some(self),
-            DbError::Serialization(_) => Some(self),
-            DbError::Conversion(_) => Some(self),
-        }
-    }
-}
-
-impl From<Error> for DbError {
-    fn from(e: Error) -> Self {
-        DbError::Rocks(e)
-    }
-}
-
-impl From<bincode::Error> for DbError {
-    fn from(e: bincode::Error) -> Self {
-        DbError::Serialization(e.as_ref().to_string())
-    }
-}
-
 impl RWLock for Db {
     type Item = DB;
 
@@ -113,11 +71,11 @@ impl Db {
     where
         V: AsRef<[u8]>,
     {
-        self.w_lock().put(key, val).map_err(DbError::from)
+        Ok(self.w_lock().put(key, val)?)
     }
 
     fn get(&self, key: &str) -> DbResult<Option<Vec<u8>>> {
-        self.r_lock().get(key).map_err(DbError::from)
+        Ok(self.r_lock().get(key)?)
     }
 
     fn remove(&self, key: &str) -> DbResult<()> {
@@ -128,7 +86,7 @@ impl Db {
     where
         P: AsRef<Path>,
     {
-        DB::destroy(&Options::default(), path).map_err(DbError::from)
+        Ok(DB::destroy(&Options::default(), path)?)
     }
 }
 
@@ -259,13 +217,12 @@ fn not_exists(db_name: &str) -> DbError {
 }
 
 fn serialize(data: Bytes, ttl: u128) -> DbResult<Vec<u8>> {
-    bincode::serialize(&Data {
+    Ok(bincode::serialize(&Data {
         ttl,
         data: data.to_vec(),
-    })
-    .map_err(DbError::from)
+    })?)
 }
 
 fn deserialize(data: Vec<u8>) -> DbResult<Data> {
-    bincode::deserialize(&data).map_err(DbError::from)
+    Ok(bincode::deserialize(&data)?)
 }
