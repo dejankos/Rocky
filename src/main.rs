@@ -12,7 +12,7 @@ use actix_web::web::Bytes;
 use actix_web::{delete, get, post, put, HttpRequest, HttpResponse, ResponseError};
 use actix_web::{web, App, HttpServer};
 use log::LevelFilter;
-use serde::{Deserialize};
+use serde::Deserialize;
 use simplelog::{Config, TermLogger, TerminalMode};
 
 use crate::config::load_db_config;
@@ -28,7 +28,7 @@ type Response<T> = Result<T, DbError>;
 type Conversion<T> = Result<T, Box<dyn error::Error>>;
 
 const NO_TTL: u128 = 0;
-const TTL_HEADER: & str = "ttl";
+const TTL_HEADER: &str = "ttl";
 
 #[derive(Deserialize)]
 struct PathVal {
@@ -118,7 +118,7 @@ fn convert(h: &HeaderValue) -> Conversion<u128> {
     Ok(h.to_str()?.parse::<u128>()?)
 }
 
-fn current_time_ms() -> Conversion<u128> {
+pub fn current_time_ms() -> Conversion<u128> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())
 }
 

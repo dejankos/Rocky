@@ -1,18 +1,16 @@
 use std::collections::HashMap;
-
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-
 
 use actix_web::web::Bytes;
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 use executors::threadpool_executor::ThreadPoolExecutor;
 use executors::Executor;
 use rocksdb::{IteratorMode, Options, DB};
-
 use serde::{Deserialize, Serialize};
 
 use crate::config::DbConfig;
+use crate::current_time_ms;
 use crate::errors::DbError;
 
 const ROOT_DB_NAME: &str = "root";
@@ -27,6 +25,7 @@ trait RWLock {
     fn w_lock(&self) -> ShardedLockWriteGuard<'_, Self::Item>;
 }
 
+#[derive(Clone)]
 struct Db {
     rock: SafeRW<DB>,
 }
@@ -186,14 +185,31 @@ impl DbManager {
             Some(db) => {
                 if let Some(bytes) = db.get(&key)? {
                     let data = deserialize(bytes)?;
+                    if data.ttl < current_time_ms()? {
+                        self.expire(db, key);
 
-                    Ok(Some(data.data))
+                        Ok(None)
+                    } else {
+                        Ok(Some(data.data))
+                    }
                 } else {
                     Ok(None)
                 }
             }
             None => Err(not_exists(db_name)),
         }
+    }
+
+    fn expire(&self, db: &Db, key: &str) {
+        let db = db.clone();
+        let key = key.to_string();
+        self.executor
+            .lock()
+            .expect("Failed to acquire executor lock")
+            .execute(move || match db.w_lock().delete(&key) {
+                Err(e) => error!("Failed to expire key = {}, e = {}", key, e),
+                _ => {}
+            });
     }
 
     pub async fn remove(&self, db_name: &str, key: &str) -> DbResult<()> {
