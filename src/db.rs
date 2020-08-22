@@ -1,17 +1,18 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::thread;
 
 use actix_web::web::Bytes;
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 use executors::threadpool_executor::ThreadPoolExecutor;
 use executors::Executor;
-use rocksdb::{IteratorMode, Options, DB};
+use rocksdb::{CompactionDecision, IteratorMode, Options, DB};
 use serde::{Deserialize, Serialize};
 
-use crate::config::DbConfig;
-use crate::current_time_ms;
+use crate::config::{load_db_config, DbConfig};
 use crate::errors::DbError;
+use crate::{current_time_ms, Conversion};
 
 const ROOT_DB_NAME: &str = "root";
 
@@ -56,11 +57,11 @@ impl RWLock for Db {
 }
 
 impl Db {
-    fn new<P>(path: P) -> DbResult<Self>
+    fn new<P>(path: P, opts: &Options) -> DbResult<Self>
     where
         P: AsRef<Path>,
     {
-        let rock = DB::open_default(path)?;
+        let rock = DB::open(&opts, path)?;
         Ok(Db {
             rock: Arc::new(ShardedLock::new(rock)),
         })
@@ -102,8 +103,17 @@ impl RWLock for DbManager {
 }
 
 impl DbManager {
-    pub fn new(config: DbConfig) -> DbResult<Self> {
-        let root_db = Db::new(format!("{}/{}", config.path, ROOT_DB_NAME))?;
+    pub fn new() -> DbResult<Self> {
+        let config = load_db_config()?;
+        config
+            .options()
+            .set_compaction_filter("expiration-filter", compaction_filter);
+        info!("Using db config {:?}", &config);
+
+        let root_db = Db::new(
+            format!("{}/{}", config.path, ROOT_DB_NAME),
+            &Options::default(),
+        )?;
         Ok(DbManager {
             config,
             root_db,
@@ -126,7 +136,7 @@ impl DbManager {
             })
             .for_each(|(name, path)| {
                 info!("Opening Db = {} on path = {}", &name, &path);
-                let db = Db::new(path).expect("Unable to open db");
+                let db = Db::new(path, &self.config.options()).expect("Unable to open db");
                 self.dbs.write().unwrap().insert(name, db);
             });
 
@@ -142,7 +152,7 @@ impl DbManager {
             )))
         } else {
             let path = format!("{}/{}", self.config.path, db_name);
-            let db = Db::new(&path)?;
+            let db = Db::new(&path, &self.config.options())?;
 
             self.root_db.put(&db_name, &path)?;
             self.w_lock().insert(db_name, db);
@@ -159,13 +169,11 @@ impl DbManager {
         } else {
             if let Some(db) = self.w_lock().remove(&db_name) {
                 info!("Closing db = {} ...", &db_name);
-                self.executor
-                    .lock()
-                    .expect("Failed to acquire executor lock")
-                    .execute(move || match db.close(&db_name) {
-                        Ok(_) => info!("Db = {} closed", &db_name),
-                        Err(e) => error!("Error closing db = {}, e = {}", &db_name, e),
-                    });
+
+                self.tp_mutex().execute(move || match db.close(&db_name) {
+                    Ok(_) => info!("Db = {} closed", &db_name),
+                    Err(e) => error!("Error closing db = {}, e = {}", &db_name, e),
+                });
             }
 
             Ok(())
@@ -185,9 +193,8 @@ impl DbManager {
             Some(db) => {
                 if let Some(bytes) = db.get(&key)? {
                     let data = deserialize(bytes)?;
-                    if data.ttl < current_time_ms()? {
+                    if is_expired(data.ttl)? {
                         self.expire(db, key);
-
                         Ok(None)
                     } else {
                         Ok(Some(data.data))
@@ -203,12 +210,9 @@ impl DbManager {
     fn expire(&self, db: &Db, key: &str) {
         let db = db.clone();
         let key = key.to_string();
-        self.executor
-            .lock()
-            .expect("Failed to acquire executor lock")
-            .execute(move || match db.w_lock().delete(&key) {
-                Err(e) => error!("Failed to expire key = {}, e = {}", key, e),
-                _ => {}
+        self.tp_mutex()
+            .execute(move || if let Err(e) = db.w_lock().delete(&key) {
+                error!("Failed to expire key = {}, e = {}", key, e);
             });
     }
 
@@ -226,6 +230,12 @@ impl DbManager {
     fn not_present(&self, db_name: &str) -> bool {
         !self.is_present(db_name)
     }
+
+    fn tp_mutex(&self) -> MutexGuard<'_, ThreadPoolExecutor> {
+        self.executor
+            .lock()
+            .expect("Failed to acquire executor lock")
+    }
 }
 
 fn not_exists(db_name: &str) -> DbError {
@@ -241,4 +251,29 @@ fn serialize(data: Bytes, ttl: u128) -> DbResult<Vec<u8>> {
 
 fn deserialize(data: Vec<u8>) -> DbResult<Data> {
     Ok(bincode::deserialize(&data)?)
+}
+
+fn is_expired(ttl: u128) -> Conversion<bool> {
+    Ok(ttl < current_time_ms()?)
+}
+
+fn compaction_filter(_level: u32, _key: &[u8], value: &[u8]) -> CompactionDecision {
+    info!(
+        "Running compaction filter in thread {:?}",
+        thread::current()
+    );
+    if let Ok(data) = deserialize(value.to_vec()) {
+        if let Ok(expired) = is_expired(data.ttl) {
+            if expired {
+                CompactionDecision::Remove
+            } else {
+                CompactionDecision::Keep
+            }
+        } else {
+            CompactionDecision::Remove
+        }
+    } else {
+        error!("Compaction job:: Can't deserialize record - will be discarded.");
+        CompactionDecision::Remove
+    }
 }

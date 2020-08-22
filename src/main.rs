@@ -2,7 +2,6 @@
 extern crate log;
 
 use std::error;
-
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use actix_web::http::header::ContentType;
@@ -15,7 +14,7 @@ use log::LevelFilter;
 use serde::Deserialize;
 use simplelog::{Config, TermLogger, TerminalMode};
 
-use crate::config::load_db_config;
+
 use crate::db::DbManager;
 use crate::errors::{ApiError, DbError};
 
@@ -56,6 +55,9 @@ impl ResponseError for DbError {
                 HttpResponse::BadRequest().json(ApiError::Msg(s.into()))
             }
             DbError::Rocks(e) => {
+                HttpResponse::InternalServerError().json(ApiError::Msg(e.to_string()))
+            }
+            DbError::Config(e) => {
                 HttpResponse::InternalServerError().json(ApiError::Msg(e.to_string()))
             }
         }
@@ -126,13 +128,11 @@ pub fn current_time_ms() -> Conversion<u128> {
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=debug");
     std::env::set_var("RUST_BACKTRACE", "1");
+    //todo log format
     TermLogger::init(LevelFilter::Info, Config::default(), TerminalMode::Mixed).unwrap();
 
-    let db_cfg = load_db_config().expect("Failed to start - can't load db config");
-    info!("Db config = {:?}", db_cfg);
-
-    let db_manager = DbManager::new(db_cfg).expect("handle err");
-    db_manager.init().expect("handle err");
+    let db_manager = DbManager::new()?;
+    db_manager.init()?;
     let db_manager = web::Data::new(db_manager);
 
     HttpServer::new(move || {
