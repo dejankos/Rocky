@@ -5,14 +5,14 @@ use std::thread;
 
 use actix_web::web::Bytes;
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
-use executors::threadpool_executor::ThreadPoolExecutor;
 use executors::Executor;
-use rocksdb::{CompactionDecision, IteratorMode, Options, DB};
+use executors::threadpool_executor::ThreadPoolExecutor;
+use rocksdb::{CompactionDecision, DB, IteratorMode, Options};
 use serde::{Deserialize, Serialize};
 
-use crate::config::{load_db_config, DbConfig};
+use crate::{Conversion, current_time_ms, PathCfg};
+use crate::config::{DbConfig, load_db_config};
 use crate::errors::DbError;
-use crate::{current_time_ms, Conversion};
 
 const ROOT_DB_NAME: &str = "root";
 
@@ -58,8 +58,8 @@ impl RWLock for Db {
 
 impl Db {
     fn new<P>(path: P, opts: &Options) -> DbResult<Self>
-    where
-        P: AsRef<Path>,
+        where
+            P: AsRef<Path>,
     {
         let rock = DB::open(&opts, path)?;
         Ok(Db {
@@ -68,8 +68,8 @@ impl Db {
     }
 
     fn put<V>(&self, key: &str, val: V) -> DbResult<()>
-    where
-        V: AsRef<[u8]>,
+        where
+            V: AsRef<[u8]>,
     {
         Ok(self.w_lock().put(key, val)?)
     }
@@ -83,8 +83,8 @@ impl Db {
     }
 
     fn close<P>(&self, path: P) -> DbResult<()>
-    where
-        P: AsRef<Path>,
+        where
+            P: AsRef<Path>,
     {
         Ok(DB::destroy(&Options::default(), path)?)
     }
@@ -103,16 +103,16 @@ impl RWLock for DbManager {
 }
 
 impl DbManager {
-    pub fn new() -> DbResult<Self> {
-        let config = load_db_config()?;
+    pub fn new(path_cfg: PathCfg) -> DbResult<Self> {
+        let config = load_db_config(path_cfg.config_path.as_ref())?;
         config
-            .options()
+            .rocks_options()
             .set_compaction_filter("expiration-filter", compaction_filter);
-        info!("Using db config {:?}", &config);
-
+        info!("Using db config {:#?}", &config);
+        info!("Opening root db...");
         let root_db = Db::new(
-            format!("{}/{}", config.path, ROOT_DB_NAME),
-            &Options::default(),
+            format!("{}/{}", config.path(), ROOT_DB_NAME),
+            &config.root_db_options(),
         )?;
         Ok(DbManager {
             config,
@@ -135,9 +135,8 @@ impl DbManager {
                 )
             })
             .for_each(|(name, path)| {
-                info!("Opening Db = {} on path = {}", &name, &path);
-                let db = Db::new(path, &self.config.options()).expect("Unable to open db");
-                self.dbs.write().unwrap().insert(name, db);
+                info!("Initializing db = {} on path = {}", &name, &path);
+                self.open_on_path(name, path).expect("Failed to open db");
             });
 
         Ok(())
@@ -151,13 +150,18 @@ impl DbManager {
                 db_name
             )))
         } else {
-            let path = format!("{}/{}", self.config.path, db_name);
-            let db = Db::new(&path, &self.config.options())?;
-
+            let path = format!("{}/{}", self.config.path(), db_name);
+            info!("Opening Db = {} on path = {}", &db_name, &path);
             self.root_db.put(&db_name, &path)?;
-            self.w_lock().insert(db_name, db);
+            self.open_on_path(db_name, path)?;
             Ok(())
         }
+    }
+
+    fn open_on_path(&self, db_name: String, path: String) -> DbResult<()> {
+        let db = Db::new(&path, &self.config.rocks_options())?;
+        self.w_lock().insert(db_name, db);
+        Ok(())
     }
 
     pub async fn close(&self, db_name: String) -> DbResult<()> {
@@ -169,7 +173,6 @@ impl DbManager {
         } else {
             if let Some(db) = self.w_lock().remove(&db_name) {
                 info!("Closing db = {} ...", &db_name);
-
                 self.tp_mutex().execute(move || match db.close(&db_name) {
                     Ok(_) => info!("Db = {} closed", &db_name),
                     Err(e) => error!("Error closing db = {}, e = {}", &db_name, e),
@@ -210,10 +213,11 @@ impl DbManager {
     fn expire(&self, db: &Db, key: &str) {
         let db = db.clone();
         let key = key.to_string();
-        self.tp_mutex()
-            .execute(move || if let Err(e) = db.w_lock().delete(&key) {
+        self.tp_mutex().execute(move || {
+            if let Err(e) = db.w_lock().delete(&key) {
                 error!("Failed to expire key = {}, e = {}", key, e);
-            });
+            }
+        });
     }
 
     pub async fn remove(&self, db_name: &str, key: &str) -> DbResult<()> {
@@ -254,7 +258,11 @@ fn deserialize(data: Vec<u8>) -> DbResult<Data> {
 }
 
 fn is_expired(ttl: u128) -> Conversion<bool> {
-    Ok(ttl < current_time_ms()?)
+    if ttl == 0 {
+        Ok(false)
+    } else {
+        Ok(ttl < current_time_ms()?)
+    }
 }
 
 fn compaction_filter(_level: u32, _key: &[u8], value: &[u8]) -> CompactionDecision {

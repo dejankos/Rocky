@@ -13,7 +13,7 @@ use actix_web::{web, App, HttpServer};
 use log::LevelFilter;
 use serde::Deserialize;
 use simplelog::{Config, TermLogger, TerminalMode};
-
+use structopt::StructOpt;
 
 use crate::db::DbManager;
 use crate::errors::{ApiError, DbError};
@@ -28,6 +28,21 @@ type Conversion<T> = Result<T, Box<dyn error::Error>>;
 
 const NO_TTL: u128 = 0;
 const TTL_HEADER: &str = "ttl";
+
+#[derive(StructOpt)]
+pub struct PathCfg {
+    #[structopt(short, long, help = "Log files path", default_value = "./log")]
+    log_path: String,
+    #[structopt(
+        short,
+        long,
+        help = "Service and database config path. Rocky will look for db_config.toml \
+    and service_config.toml files under this path if not found will create config files \
+    with defaults.",
+        default_value = "./config"
+    )]
+    config_path: String,
+}
 
 #[derive(Deserialize)]
 struct PathVal {
@@ -131,7 +146,8 @@ async fn main() -> std::io::Result<()> {
     //todo log format
     TermLogger::init(LevelFilter::Info, Config::default(), TerminalMode::Mixed).unwrap();
 
-    let db_manager = DbManager::new()?;
+    let path_cfg = PathCfg::from_args();
+    let db_manager = DbManager::new(path_cfg)?;
     db_manager.init()?;
     let db_manager = web::Data::new(db_manager);
 

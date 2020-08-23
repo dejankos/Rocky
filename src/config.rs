@@ -9,9 +9,36 @@ pub struct ServiceConfig {
     workers: u8,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub struct DbConfig {
-    pub path: String,
+    rocks_cfg: RocksDbConfig,
+    path: String,
+}
+
+impl DbConfig {
+    fn new(rocks_cfg: RocksDbConfig) -> Self {
+        DbConfig { path: rocks_cfg.path.clone(), rocks_cfg }
+    }
+
+    pub fn rocks_options(&self) -> Options {
+        self.rocks_cfg.options()
+    }
+
+    pub fn root_db_options(&self) -> Options {
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+
+        opts
+    }
+
+    pub fn path(&self) -> &str {
+        self.path.as_ref()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RocksDbConfig {
+    path: String,
     max_open_files: i32,
     fsync: bool,
     bytes_per_sync: u64,
@@ -29,10 +56,10 @@ pub struct DbConfig {
     max_background_flushes: i32,
 }
 
-impl Default for DbConfig {
+impl Default for RocksDbConfig {
     fn default() -> Self {
-        DbConfig {
-            path: "./db".into(),
+        RocksDbConfig {
+            path: "./db".to_string(),
             max_open_files: -1,
             fsync: false,
             bytes_per_sync: 0,
@@ -62,7 +89,7 @@ impl Default for ServiceConfig {
     }
 }
 
-impl DbConfig {
+impl RocksDbConfig {
     pub fn options(&self) -> Options {
         let mut opts = Options::default();
         opts.set_max_open_files(self.max_open_files);
@@ -78,13 +105,15 @@ impl DbConfig {
         opts.set_compaction_style(get_compaction_style(&self.compaction_style));
         opts.set_max_background_compactions(self.max_background_compactions);
         opts.set_max_background_flushes(self.max_background_flushes);
+        opts.create_if_missing(true);
 
         opts
     }
 }
 
-pub fn load_db_config() -> Result<DbConfig, ConfyError> {
-    confy::load_path("./db_config.toml")
+pub fn load_db_config(cfg_path: &str) -> Result<DbConfig, ConfyError> {
+    let rocks_cfg = confy::load_path(format!("{}/db_config.toml", cfg_path))?;
+    Ok(DbConfig::new(rocks_cfg))
 }
 
 pub fn load_service_config() -> Result<ServiceConfig, ConfyError> {
