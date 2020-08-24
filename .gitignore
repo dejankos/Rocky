@@ -40,3 +40,6 @@ out/
 
 # db
 /db/
+
+# log
+/log/

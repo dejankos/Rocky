@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::path::Path;
+use std::string::FromUtf8Error;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 
@@ -122,7 +124,8 @@ impl DbManager {
         })
     }
 
-    pub fn init(&self) -> DbResult<()> {
+    // will panic in main thread and prevent startup
+    pub fn init(&self) {
         info!("Initializing dbs ...");
         //TODO db iterator
         self.root_db
@@ -138,8 +141,6 @@ impl DbManager {
                 info!("Initializing db = {} on path = {}", &name, &path);
                 self.open_on_path(name, path).expect("Failed to open db");
             });
-
-        Ok(())
     }
 
     pub async fn open(&self, db_name: String) -> DbResult<()> {
@@ -241,6 +242,13 @@ impl DbManager {
             .expect("Failed to acquire executor lock")
     }
 }
+
+impl Drop for DbManager {
+    fn drop(&mut self) {
+        info!("Db closed.");
+    }
+}
+
 
 fn not_exists(db_name: &str) -> DbError {
     DbError::Validation(format!("Db {} - doesn't exist", &db_name))

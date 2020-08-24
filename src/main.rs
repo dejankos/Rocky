@@ -12,11 +12,12 @@ use actix_web::{delete, get, post, put, HttpRequest, HttpResponse, ResponseError
 use actix_web::{web, App, HttpServer};
 use log::LevelFilter;
 use serde::Deserialize;
-use simplelog::{Config, TermLogger, TerminalMode};
+use simplelog::{Config, TermLogger, TerminalMode, WriteLogger, ConfigBuilder, ThreadPadding, ThreadLogMode};
 use structopt::StructOpt;
 
 use crate::db::DbManager;
 use crate::errors::{ApiError, DbError};
+use std::fs::File;
 
 mod errors;
 
@@ -139,21 +140,31 @@ pub fn current_time_ms() -> Conversion<u128> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())
 }
 
+
+// error and 404 handler
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
-    std::env::set_var("RUST_LOG", "actix_web=debug");
+    std::env::set_var("RUST_LOG", "actix_web=error");
     std::env::set_var("RUST_BACKTRACE", "1");
-    //todo log format
-    TermLogger::init(LevelFilter::Info, Config::default(), TerminalMode::Mixed).unwrap();
+
+
+    let cfg = ConfigBuilder::new()
+        //.set_thread_padding(ThreadPadding::Left(1))
+        .set_thread_mode(ThreadLogMode::Names).build();
+
 
     let path_cfg = PathCfg::from_args();
+    WriteLogger::init(LevelFilter::Info, cfg, File::create(format!("{}/rocky.log", &path_cfg.log_path)).unwrap());
+
+
     let db_manager = DbManager::new(path_cfg)?;
-    db_manager.init()?;
+    db_manager.init();
     let db_manager = web::Data::new(db_manager);
+
 
     HttpServer::new(move || {
         App::new()
-            .wrap(Logger::default())
+           // .wrap(Logger::default())
             .app_data(db_manager.clone())
             .service(open)
             .service(close)

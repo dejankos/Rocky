@@ -17,7 +17,10 @@ pub struct DbConfig {
 
 impl DbConfig {
     fn new(rocks_cfg: RocksDbConfig) -> Self {
-        DbConfig { path: rocks_cfg.path.clone(), rocks_cfg }
+        DbConfig {
+            path: rocks_cfg.path.clone(),
+            rocks_cfg,
+        }
     }
 
     pub fn rocks_options(&self) -> Options {
