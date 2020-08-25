@@ -7,24 +7,19 @@ pub struct ServiceConfig {
     ip: String,
     port: u16,
     workers: u8,
+    pub dev_mode: bool,
 }
 
 #[derive(Debug)]
-pub struct DbConfig {
-    rocks_cfg: RocksDbConfig,
-    path: String,
-}
+pub struct DbConfig(RocksDbConfig);
 
 impl DbConfig {
     fn new(rocks_cfg: RocksDbConfig) -> Self {
-        DbConfig {
-            path: rocks_cfg.path.clone(),
-            rocks_cfg,
-        }
+        DbConfig(rocks_cfg)
     }
 
     pub fn rocks_options(&self) -> Options {
-        self.rocks_cfg.options()
+        self.0.options()
     }
 
     pub fn root_db_options(&self) -> Options {
@@ -35,7 +30,7 @@ impl DbConfig {
     }
 
     pub fn path(&self) -> &str {
-        self.path.as_ref()
+        self.0.path.as_ref()
     }
 }
 
@@ -88,6 +83,7 @@ impl Default for ServiceConfig {
             ip: "localhost".to_string(),
             port: 8080,
             workers: num_cpus::get() as u8,
+            dev_mode: true,
         }
     }
 }

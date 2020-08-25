@@ -1,20 +1,20 @@
 use std::collections::HashMap;
-use std::convert::TryFrom;
+
 use std::path::Path;
-use std::string::FromUtf8Error;
+
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 
 use actix_web::web::Bytes;
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
-use executors::Executor;
 use executors::threadpool_executor::ThreadPoolExecutor;
-use rocksdb::{CompactionDecision, DB, IteratorMode, Options};
+use executors::Executor;
+use rocksdb::{CompactionDecision, IteratorMode, Options, DB};
 use serde::{Deserialize, Serialize};
 
-use crate::{Conversion, current_time_ms, PathCfg};
-use crate::config::{DbConfig, load_db_config};
+use crate::config::{load_db_config, DbConfig};
 use crate::errors::DbError;
+use crate::{current_time_ms, Conversion, PathCfg};
 
 const ROOT_DB_NAME: &str = "root";
 
@@ -60,8 +60,8 @@ impl RWLock for Db {
 
 impl Db {
     fn new<P>(path: P, opts: &Options) -> DbResult<Self>
-        where
-            P: AsRef<Path>,
+    where
+        P: AsRef<Path>,
     {
         let rock = DB::open(&opts, path)?;
         Ok(Db {
@@ -70,8 +70,8 @@ impl Db {
     }
 
     fn put<V>(&self, key: &str, val: V) -> DbResult<()>
-        where
-            V: AsRef<[u8]>,
+    where
+        V: AsRef<[u8]>,
     {
         Ok(self.w_lock().put(key, val)?)
     }
@@ -85,8 +85,8 @@ impl Db {
     }
 
     fn close<P>(&self, path: P) -> DbResult<()>
-        where
-            P: AsRef<Path>,
+    where
+        P: AsRef<Path>,
     {
         Ok(DB::destroy(&Options::default(), path)?)
     }
@@ -248,7 +248,6 @@ impl Drop for DbManager {
         info!("Db closed.");
     }
 }
-
 
 fn not_exists(db_name: &str) -> DbError {
     DbError::Validation(format!("Db {} - doesn't exist", &db_name))

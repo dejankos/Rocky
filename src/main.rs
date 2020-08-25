@@ -2,22 +2,24 @@
 extern crate log;
 
 use std::error;
+use std::fs::File;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use actix_web::{delete, get, HttpRequest, HttpResponse, post, put, ResponseError};
+use actix_web::{App, HttpServer, web};
 use actix_web::http::header::ContentType;
 use actix_web::http::HeaderValue;
-use actix_web::middleware::Logger;
 use actix_web::web::Bytes;
-use actix_web::{delete, get, post, put, HttpRequest, HttpResponse, ResponseError};
-use actix_web::{web, App, HttpServer};
 use log::LevelFilter;
 use serde::Deserialize;
-use simplelog::{Config, TermLogger, TerminalMode, WriteLogger, ConfigBuilder, ThreadPadding, ThreadLogMode};
+use simplelog::{
+    Config, ConfigBuilder, TerminalMode, TermLogger, ThreadLogMode, WriteLogger,
+};
 use structopt::StructOpt;
 
+use crate::config::load_service_config;
 use crate::db::DbManager;
 use crate::errors::{ApiError, DbError};
-use std::fs::File;
 
 mod errors;
 
@@ -35,12 +37,12 @@ pub struct PathCfg {
     #[structopt(short, long, help = "Log files path", default_value = "./log")]
     log_path: String,
     #[structopt(
-        short,
-        long,
-        help = "Service and database config path. Rocky will look for db_config.toml \
+    short,
+    long,
+    help = "Service and database config path. Rocky will look for db_config.toml \
     and service_config.toml files under this path if not found will create config files \
     with defaults.",
-        default_value = "./config"
+    default_value = "./config"
     )]
     config_path: String,
 }
@@ -140,31 +142,26 @@ pub fn current_time_ms() -> Conversion<u128> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())
 }
 
-
 // error and 404 handler
+
+// main thread will panic! if service can't be initialized
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=error");
     std::env::set_var("RUST_BACKTRACE", "1");
 
-
-    let cfg = ConfigBuilder::new()
-        //.set_thread_padding(ThreadPadding::Left(1))
-        .set_thread_mode(ThreadLogMode::Names).build();
-
-
     let path_cfg = PathCfg::from_args();
-    WriteLogger::init(LevelFilter::Info, cfg, File::create(format!("{}/rocky.log", &path_cfg.log_path)).unwrap());
+    let service_cfg = load_service_config().expect("Can't load service config");
 
+    init_logging(&path_cfg.log_path, service_cfg.dev_mode);
 
     let db_manager = DbManager::new(path_cfg)?;
     db_manager.init();
     let db_manager = web::Data::new(db_manager);
 
-
     HttpServer::new(move || {
         App::new()
-           // .wrap(Logger::default())
+            // .wrap(Logger::default())
             .app_data(db_manager.clone())
             .service(open)
             .service(close)
@@ -172,8 +169,23 @@ async fn main() -> std::io::Result<()> {
             .service(read)
             .service(remove)
     })
-    .bind("127.0.0.1:8080")?
-    .shutdown_timeout(60)
-    .run()
-    .await
+        .bind("127.0.0.1:8080")?
+        .shutdown_timeout(60)
+        .run()
+        .await
+}
+
+fn init_logging(log_path: &str, dev_mode: bool) {
+    let cfg = ConfigBuilder::new()
+        .set_thread_mode(ThreadLogMode::Both)
+        .build();
+
+    if dev_mode {
+        TermLogger::init(LevelFilter::Info, cfg, TerminalMode::Mixed)
+            .expect("Failed to init term logger");
+    } else {
+        let log_file =
+            File::create(format!("{}/rocky.log", log_path)).expect("Can't create log file");
+        WriteLogger::init(LevelFilter::Info, cfg, log_file).expect("Failed to init file logger")
+    }
 }
