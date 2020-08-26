@@ -115,8 +115,11 @@ pub fn load_db_config(cfg_path: &str) -> Result<DbConfig, ConfyError> {
     Ok(DbConfig::new(rocks_cfg))
 }
 
-pub fn load_service_config() -> Result<ServiceConfig, ConfyError> {
-    confy::load_path("./service_config.toml")
+pub fn load_service_config(cfg_path: &str) -> Result<ServiceConfig, ConfyError> {
+    Ok(confy::load_path(format!(
+        "{}/service_config.toml",
+        cfg_path
+    ))?)
 }
 
 fn get_compaction_style(s: &str) -> DBCompactionStyle {

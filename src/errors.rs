@@ -28,6 +28,19 @@ impl From<Box<dyn std::error::Error>> for DbError {
     }
 }
 
+impl ApiError {
+    pub fn from_not_found(path: &str) -> Self {
+        ApiError::Msg(format!(
+            "This is not the path you're looking for, path = \"{}\".",
+            path
+        ))
+    }
+
+    pub fn not_found_generic() -> Self {
+        ApiError::Msg("Not found".into())
+    }
+}
+
 impl Display for DbError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -73,5 +86,13 @@ impl From<ConfyError> for DbError {
 impl From<DbError> for std::io::Error {
     fn from(e: DbError) -> Self {
         std::io::Error::new(ErrorKind::InvalidData, e)
+    }
+}
+
+impl From<ApiError> for String {
+    fn from(e: ApiError) -> Self {
+        match e {
+            ApiError::Msg(s) => s,
+        }
     }
 }

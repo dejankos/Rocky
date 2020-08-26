@@ -5,19 +5,19 @@ use std::error;
 use std::fs::File;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use actix_web::{delete, get, HttpRequest, HttpResponse, post, put, ResponseError};
-use actix_web::{App, HttpServer, web};
+use actix_web::body::{Body, ResponseBody};
 use actix_web::http::header::ContentType;
 use actix_web::http::HeaderValue;
+use actix_web::middleware::errhandlers::{ErrorHandlerResponse, ErrorHandlers};
 use actix_web::web::Bytes;
+use actix_web::{delete, dev, get, http, post, put, HttpRequest, HttpResponse, ResponseError};
+use actix_web::{web, App, HttpServer};
 use log::LevelFilter;
 use serde::Deserialize;
-use simplelog::{
-    Config, ConfigBuilder, TerminalMode, TermLogger, ThreadLogMode, WriteLogger,
-};
+use simplelog::{ConfigBuilder, TermLogger, TerminalMode, ThreadLogMode, WriteLogger};
 use structopt::StructOpt;
 
-use crate::config::load_service_config;
+use crate::config::{load_db_config, load_service_config};
 use crate::db::DbManager;
 use crate::errors::{ApiError, DbError};
 
@@ -32,17 +32,17 @@ type Conversion<T> = Result<T, Box<dyn error::Error>>;
 const NO_TTL: u128 = 0;
 const TTL_HEADER: &str = "ttl";
 
-#[derive(StructOpt)]
+#[derive(StructOpt, Debug)]
 pub struct PathCfg {
     #[structopt(short, long, help = "Log files path", default_value = "./log")]
     log_path: String,
     #[structopt(
-    short,
-    long,
-    help = "Service and database config path. Rocky will look for db_config.toml \
+        short,
+        long,
+        help = "Service and database config path. Rocky will look for db_config.toml \
     and service_config.toml files under this path if not found will create config files \
     with defaults.",
-    default_value = "./config"
+        default_value = "./config"
     )]
     config_path: String,
 }
@@ -82,6 +82,27 @@ impl ResponseError for DbError {
     }
 }
 
+fn not_found<B>(mut res: dev::ServiceResponse<B>) -> actix_web::Result<ErrorHandlerResponse<B>> {
+    res.headers_mut().insert(
+        http::header::CONTENT_TYPE,
+        http::HeaderValue::from_static("application/json"),
+    );
+
+    let not_found = ApiError::from_not_found(res.request().path());
+    let r = res.map_body(|_h, _b| {
+        ResponseBody::Other(Body::from(
+            if let Ok(json) = serde_json::to_string(&not_found) {
+                json
+            } else {
+                warn!("Can't generate not found msg - using default.");
+                ApiError::not_found_generic().into()
+            },
+        ))
+    });
+
+    Ok(ErrorHandlerResponse::Response(r))
+}
+
 #[post("/{db_name}")]
 async fn open(db_name: web::Path<String>, db_man: web::Data<DbManager>) -> Response<HttpResponse> {
     db_man.open(db_name.into_inner()).await?;
@@ -119,8 +140,9 @@ async fn read(p_val: web::Path<PathVal>, db_man: web::Data<DbManager>) -> Respon
         .await?;
 
     let mut http_res = HttpResponse::Ok();
+    http_res.set(ContentType::octet_stream());
     Ok(if let Some(bytes) = res {
-        http_res.set(ContentType::octet_stream()).body(bytes)
+        http_res.body(bytes)
     } else {
         http_res.finish()
     })
@@ -142,26 +164,29 @@ pub fn current_time_ms() -> Conversion<u128> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())
 }
 
-// error and 404 handler
-
-// main thread will panic! if service can't be initialized
+// main thread will panic! if config can't be initialized
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=error");
     std::env::set_var("RUST_BACKTRACE", "1");
 
     let path_cfg = PathCfg::from_args();
-    let service_cfg = load_service_config().expect("Can't load service config");
-
+    let service_cfg =
+        load_service_config(&path_cfg.config_path).expect("Can't load service config");
     init_logging(&path_cfg.log_path, service_cfg.dev_mode);
+    info!("Running with path configuration = {:#?}", path_cfg);
+    info!("Loaded service configuration = {:#?}", &service_cfg);
 
-    let db_manager = DbManager::new(path_cfg)?;
+    let db_cfg = load_db_config(&path_cfg.config_path).expect("Can't load service config");
+    info!("Loaded db configuration = {:#?}", &db_cfg);
+
+    let db_manager = DbManager::new(db_cfg)?;
     db_manager.init();
-    let db_manager = web::Data::new(db_manager);
 
+    let db_manager = web::Data::new(db_manager);
     HttpServer::new(move || {
         App::new()
-            // .wrap(Logger::default())
+            .wrap(ErrorHandlers::new().handler(http::StatusCode::NOT_FOUND, not_found))
             .app_data(db_manager.clone())
             .service(open)
             .service(close)
@@ -169,10 +194,10 @@ async fn main() -> std::io::Result<()> {
             .service(read)
             .service(remove)
     })
-        .bind("127.0.0.1:8080")?
-        .shutdown_timeout(60)
-        .run()
-        .await
+    .bind("127.0.0.1:8080")?
+    .shutdown_timeout(60)
+    .run()
+    .await
 }
 
 fn init_logging(log_path: &str, dev_mode: bool) {
