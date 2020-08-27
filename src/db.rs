@@ -12,9 +12,8 @@ use rocksdb::{CompactionDecision, IteratorMode, Options, DB};
 use serde::{Deserialize, Serialize};
 
 use crate::config::DbConfig;
-use crate::conversion::{bytes_to_str, deserialize, serialize};
+use crate::conversion::{bytes_to_str, current_ms, deserialize, serialize, Conversion};
 use crate::errors::DbError;
-use crate::{current_time_ms, Conversion};
 
 const ROOT_DB_NAME: &str = "root";
 
@@ -259,7 +258,7 @@ fn is_expired(ttl: u128) -> Conversion<bool> {
     if ttl == 0 {
         Ok(false)
     } else {
-        Ok(ttl < current_time_ms()?)
+        Ok(ttl < current_ms()?)
     }
 }
 

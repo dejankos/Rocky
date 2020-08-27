@@ -1,13 +1,11 @@
 #[macro_use]
 extern crate log;
 
-use std::error;
 use std::fs::File;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use actix_web::body::{Body, ResponseBody};
 use actix_web::http::header::ContentType;
-use actix_web::http::HeaderValue;
+
 use actix_web::middleware::errhandlers::{ErrorHandlerResponse, ErrorHandlers};
 use actix_web::web::Bytes;
 use actix_web::{delete, dev, get, http, post, put, HttpRequest, HttpResponse, ResponseError};
@@ -18,6 +16,7 @@ use simplelog::{ConfigBuilder, TermLogger, TerminalMode, ThreadLogMode, WriteLog
 use structopt::StructOpt;
 
 use crate::config::{load_db_config, load_service_config};
+use crate::conversion::{convert, current_ms, Conversion};
 use crate::db::DbManager;
 use crate::errors::{ApiError, DbError};
 
@@ -28,7 +27,6 @@ mod conversion;
 mod db;
 
 type Response<T> = Result<T, DbError>;
-type Conversion<T> = Result<T, Box<dyn error::Error>>;
 
 const NO_TTL: u128 = 0;
 const TTL_HEADER: &str = "ttl";
@@ -62,7 +60,7 @@ impl Expiration for HttpRequest {
     fn calc_expire(&self) -> Conversion<u128> {
         self.headers()
             .get(TTL_HEADER)
-            .map(|h| Ok(current_time_ms()? + convert(h)?))
+            .map(|h| Ok(current_ms()? + convert(h)?))
             .unwrap_or(Ok(NO_TTL))
     }
 }
@@ -155,14 +153,6 @@ async fn remove(p_val: web::Path<PathVal>, db_man: web::Data<DbManager>) -> Resp
         .remove(p_val.db_name.as_str(), p_val.key.as_str())
         .await?;
     Ok(HttpResponse::Ok().finish())
-}
-
-fn convert(h: &HeaderValue) -> Conversion<u128> {
-    Ok(h.to_str()?.parse::<u128>()?)
-}
-
-pub fn current_time_ms() -> Conversion<u128> {
-    Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())
 }
 
 // main thread will panic! if config can't be initialized

@@ -1,5 +1,11 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use actix_web::http::HeaderValue;
+
 use crate::db::Data;
-use crate::Conversion;
+use std::error;
+
+pub type Conversion<T> = Result<T, Box<dyn error::Error>>;
 
 pub trait IntoBytes<T> {
     fn as_bytes(&self) -> bincode::Result<Vec<u8>>;
@@ -33,9 +39,17 @@ pub fn bytes_to_str(bytes: &[u8]) -> Conversion<String> {
     Ok(String::from_utf8(bytes.to_vec())?)
 }
 
+pub fn convert(h: &HeaderValue) -> Conversion<u128> {
+    Ok(h.to_str()?.parse::<u128>()?)
+}
+
+pub fn current_ms() -> Conversion<u128> {
+    Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::conversion::{bytes_to_str, deserialize, serialize};
+    use super::*;
 
     #[test]
     fn should_convert_bytes_to_str() {
@@ -59,5 +73,17 @@ mod tests {
 
         let res = deserialize(res.unwrap());
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn should_convert_header() {
+        let header_val = convert(&HeaderValue::from_str("42").unwrap());
+        assert_eq!(42, header_val.unwrap());
+
+        let header_val = convert(&HeaderValue::from(42));
+        assert_eq!(42, header_val.unwrap());
+
+        let header_val = convert(&HeaderValue::from_bytes(b"42").unwrap());
+        assert_eq!(42, header_val.unwrap());
     }
 }
