@@ -1,4 +1,0 @@
-ip = 'localhost'
-port = 8080
-workers = 12
-dev_mode = true

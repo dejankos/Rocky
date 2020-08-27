@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::string::FromUtf8Error;
+
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 
@@ -12,6 +12,7 @@ use rocksdb::{CompactionDecision, IteratorMode, Options, DB};
 use serde::{Deserialize, Serialize};
 
 use crate::config::DbConfig;
+use crate::conversion::{bytes_to_str, deserialize, serialize};
 use crate::errors::DbError;
 use crate::{current_time_ms, Conversion};
 
@@ -33,7 +34,7 @@ struct Db {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Data {
+pub struct Data {
     ttl: u128,
     data: Vec<u8>,
 }
@@ -43,6 +44,12 @@ pub struct DbManager {
     root_db: Db,
     dbs: SafeRW<HashMap<String, Db>>,
     executor: Mutex<ThreadPoolExecutor>,
+}
+
+impl Data {
+    pub fn new(ttl: u128, data: Vec<u8>) -> Self {
+        Data { ttl, data }
+    }
 }
 
 impl RWLock for Db {
@@ -179,7 +186,7 @@ impl DbManager {
     }
 
     pub async fn store(&self, db_name: &str, key: &str, val: Bytes, ttl: u128) -> DbResult<()> {
-        let bytes = serialize(val, ttl)?;
+        let bytes = serialize(val.to_vec(), ttl)?;
         match self.w_lock().get(db_name) {
             Some(db) => db.put(&key, bytes),
             None => Err(not_exists(db_name)),
@@ -248,17 +255,6 @@ fn not_exists(db_name: &str) -> DbError {
     DbError::Validation(format!("Db {} - doesn't exist", &db_name))
 }
 
-fn serialize(data: Bytes, ttl: u128) -> DbResult<Vec<u8>> {
-    Ok(bincode::serialize(&Data {
-        ttl,
-        data: data.to_vec(),
-    })?)
-}
-
-fn deserialize(data: Vec<u8>) -> DbResult<Data> {
-    Ok(bincode::deserialize(&data)?)
-}
-
 fn is_expired(ttl: u128) -> Conversion<bool> {
     if ttl == 0 {
         Ok(false)
@@ -286,8 +282,4 @@ fn compaction_filter(_level: u32, _key: &[u8], value: &[u8]) -> CompactionDecisi
         error!("Compaction job:: Can't deserialize record - will be discarded.");
         CompactionDecision::Remove
     }
-}
-
-fn bytes_to_str(bytes: &[u8]) -> Result<String, FromUtf8Error> {
-    String::from_utf8(bytes.to_vec())
 }

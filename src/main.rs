@@ -24,6 +24,7 @@ use crate::errors::{ApiError, DbError};
 mod errors;
 
 mod config;
+mod conversion;
 mod db;
 
 type Response<T> = Result<T, DbError>;
@@ -173,7 +174,7 @@ async fn main() -> std::io::Result<()> {
     let path_cfg = PathCfg::from_args();
     let service_cfg =
         load_service_config(&path_cfg.config_path).expect("Can't load service config");
-    init_logging(&path_cfg.log_path, service_cfg.dev_mode);
+    init_logger(&path_cfg.log_path, service_cfg.dev_mode());
     info!("Running with path configuration = {:#?}", path_cfg);
     info!("Loaded service configuration = {:#?}", &service_cfg);
 
@@ -194,13 +195,14 @@ async fn main() -> std::io::Result<()> {
             .service(read)
             .service(remove)
     })
-    .bind("127.0.0.1:8080")?
+    .bind(service_cfg.bind_address())?
+    .workers(service_cfg.workers())
     .shutdown_timeout(60)
     .run()
     .await
 }
 
-fn init_logging(log_path: &str, dev_mode: bool) {
+fn init_logger(log_path: &str, dev_mode: bool) {
     let cfg = ConfigBuilder::new()
         .set_thread_mode(ThreadLogMode::Both)
         .build();

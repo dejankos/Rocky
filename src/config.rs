@@ -7,7 +7,7 @@ pub struct ServiceConfig {
     ip: String,
     port: u16,
     workers: u8,
-    pub dev_mode: bool,
+    dev_mode: bool,
 }
 
 #[derive(Debug)]
@@ -31,6 +31,20 @@ impl DbConfig {
 
     pub fn path(&self) -> &str {
         self.0.path.as_ref()
+    }
+}
+
+impl ServiceConfig {
+    pub fn bind_address(&self) -> String {
+        format!("{}:{}", self.ip, self.port)
+    }
+
+    pub fn dev_mode(&self) -> bool {
+        self.dev_mode
+    }
+
+    pub fn workers(&self) -> usize {
+        self.workers as usize
     }
 }
 
