@@ -1,18 +1,17 @@
 use std::collections::HashMap;
 use std::path::Path;
-
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 
 use actix_web::web::Bytes;
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
-use executors::threadpool_executor::ThreadPoolExecutor;
 use executors::Executor;
-use rocksdb::{CompactionDecision, IteratorMode, Options, DB};
+use executors::threadpool_executor::ThreadPoolExecutor;
+use rocksdb::{CompactionDecision, DB, IteratorMode, Options};
 use serde::{Deserialize, Serialize};
 
 use crate::config::DbConfig;
-use crate::conversion::{bytes_to_str, current_ms, Conversion, FromBytes, IntoBytes};
+use crate::conversion::{bytes_to_str, Conversion, current_ms, FromBytes, IntoBytes};
 use crate::errors::DbError;
 
 const ROOT_DB_NAME: &str = "root";
@@ -46,8 +45,8 @@ impl Data {
 
 impl Db {
     fn new<P>(path: P, opts: &Options) -> DbResult<Self>
-    where
-        P: AsRef<Path>,
+        where
+            P: AsRef<Path>,
     {
         let rock = DB::open(&opts, path)?;
         Ok(Db {
@@ -56,8 +55,8 @@ impl Db {
     }
 
     fn put<V>(&self, key: &str, val: V) -> DbResult<()>
-    where
-        V: AsRef<[u8]>,
+        where
+            V: AsRef<[u8]>,
     {
         Ok(self.w_lock().put(key, val)?)
     }
@@ -71,8 +70,8 @@ impl Db {
     }
 
     fn close<P>(&self, path: P) -> DbResult<()>
-    where
-        P: AsRef<Path>,
+        where
+            P: AsRef<Path>,
     {
         Ok(DB::destroy(&Options::default(), path)?)
     }
@@ -265,5 +264,33 @@ fn compaction_filter(_level: u32, _key: &[u8], value: &[u8]) -> CompactionDecisi
     } else {
         error!("Compaction job:: Can't deserialize record - will be discarded.");
         CompactionDecision::Remove
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ONE_DAY_MS: u128 = 1000 * 60 * 60 * 24;
+
+    #[test]
+    fn should_remove_expired() {
+        let bytes = Data::new(1, b"data".to_vec()).as_bytes().unwrap();
+
+        match compaction_filter(0, &[0], &bytes) {
+            CompactionDecision::Remove => {}
+            _ => panic!("Should have removed expired record")
+        }
+    }
+
+    #[test]
+    fn should_keep_not_expired() {
+        let bytes = Data::new(current_ms().unwrap() + ONE_DAY_MS, b"data".to_vec()).as_bytes().unwrap();
+
+        match compaction_filter(0, &[0], &bytes) {
+            CompactionDecision::Keep => {}
+            _ => panic!("Should have kept non expired record")
+        }
     }
 }
