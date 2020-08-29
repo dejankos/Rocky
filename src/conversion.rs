@@ -1,9 +1,9 @@
+use std::error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use actix_web::http::HeaderValue;
 
 use crate::db::Data;
-use std::error;
 
 pub type Conversion<T> = Result<T, Box<dyn error::Error>>;
 
@@ -11,7 +11,7 @@ pub trait IntoBytes<T> {
     fn as_bytes(&self) -> bincode::Result<Vec<u8>>;
 }
 
-trait FromBytes<T> {
+pub trait FromBytes<T> {
     fn as_struct(&self) -> bincode::Result<T>;
 }
 
@@ -25,14 +25,6 @@ impl FromBytes<Data> for Vec<u8> {
     fn as_struct(&self) -> bincode::Result<Data> {
         bincode::deserialize(self)
     }
-}
-
-pub fn serialize(data: Vec<u8>, ttl: u128) -> Conversion<Vec<u8>> {
-    Ok(Data::new(ttl, data).as_bytes()?)
-}
-
-pub fn deserialize(data: Vec<u8>) -> Conversion<Data> {
-    Ok(data.as_struct()?)
 }
 
 pub fn bytes_to_str(bytes: &[u8]) -> Conversion<String> {
@@ -61,17 +53,17 @@ mod tests {
     #[test]
     fn should_convert_struct_to_bytes() {
         let data = b"data";
-        let res = serialize(data.to_vec(), 1);
+        let res = Data::new(1, data.to_vec()).as_bytes();
         assert!(res.is_ok());
     }
 
     #[test]
     fn should_convert_bytes_to_struct() {
         let data = b"data";
-        let res = serialize(data.to_vec(), 1);
+        let res = Data::new(1, data.to_vec()).as_bytes();
         assert!(res.is_ok());
 
-        let res = deserialize(res.unwrap());
+        let res = res.unwrap().as_struct();
         assert!(res.is_ok());
     }
 

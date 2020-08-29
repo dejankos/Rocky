@@ -12,20 +12,13 @@ use rocksdb::{CompactionDecision, IteratorMode, Options, DB};
 use serde::{Deserialize, Serialize};
 
 use crate::config::DbConfig;
-use crate::conversion::{bytes_to_str, current_ms, deserialize, serialize, Conversion};
+use crate::conversion::{bytes_to_str, current_ms, Conversion, FromBytes, IntoBytes};
 use crate::errors::DbError;
 
 const ROOT_DB_NAME: &str = "root";
 
 type SafeRW<T> = Arc<ShardedLock<T>>;
 type DbResult<T> = Result<T, DbError>;
-
-trait RWLock {
-    type Item;
-
-    fn r_lock(&self) -> ShardedLockReadGuard<'_, Self::Item>;
-    fn w_lock(&self) -> ShardedLockWriteGuard<'_, Self::Item>;
-}
 
 #[derive(Clone)]
 struct Db {
@@ -48,18 +41,6 @@ pub struct DbManager {
 impl Data {
     pub fn new(ttl: u128, data: Vec<u8>) -> Self {
         Data { ttl, data }
-    }
-}
-
-impl RWLock for Db {
-    type Item = DB;
-
-    fn r_lock(&self) -> ShardedLockReadGuard<'_, Self::Item> {
-        self.rock.read().expect("Can't acquire read lock")
-    }
-
-    fn w_lock(&self) -> ShardedLockWriteGuard<'_, Self::Item> {
-        self.rock.write().expect("Can't acquire write lock")
     }
 }
 
@@ -95,17 +76,13 @@ impl Db {
     {
         Ok(DB::destroy(&Options::default(), path)?)
     }
-}
 
-impl RWLock for DbManager {
-    type Item = HashMap<String, Db>;
-
-    fn r_lock(&self) -> ShardedLockReadGuard<'_, Self::Item> {
-        self.dbs.read().expect("Can't acquire read lock")
+    fn r_lock(&self) -> ShardedLockReadGuard<'_, DB> {
+        self.rock.read().expect("Can't acquire read lock")
     }
 
-    fn w_lock(&self) -> ShardedLockWriteGuard<'_, Self::Item> {
-        self.dbs.write().expect("Can't acquire write lock")
+    fn w_lock(&self) -> ShardedLockWriteGuard<'_, DB> {
+        self.rock.write().expect("Can't acquire write lock")
     }
 }
 
@@ -185,7 +162,7 @@ impl DbManager {
     }
 
     pub async fn store(&self, db_name: &str, key: &str, val: Bytes, ttl: u128) -> DbResult<()> {
-        let bytes = serialize(val.to_vec(), ttl)?;
+        let bytes = Data::new(ttl, val.to_vec()).as_bytes()?;
         match self.w_lock().get(db_name) {
             Some(db) => db.put(&key, bytes),
             None => Err(not_exists(db_name)),
@@ -196,7 +173,7 @@ impl DbManager {
         match self.r_lock().get(db_name) {
             Some(db) => {
                 if let Some(bytes) = db.get(&key)? {
-                    let data = deserialize(bytes)?;
+                    let data = bytes.as_struct()?;
                     if is_expired(data.ttl)? {
                         self.expire(db, key);
                         Ok(None)
@@ -241,6 +218,14 @@ impl DbManager {
             .lock()
             .expect("Failed to acquire executor lock")
     }
+
+    fn r_lock(&self) -> ShardedLockReadGuard<'_, HashMap<String, Db>> {
+        self.dbs.read().expect("Can't acquire read lock")
+    }
+
+    fn w_lock(&self) -> ShardedLockWriteGuard<'_, HashMap<String, Db>> {
+        self.dbs.write().expect("Can't acquire write lock")
+    }
 }
 
 fn open_root_db(db_cfg: &DbConfig) -> DbResult<Db> {
@@ -267,7 +252,7 @@ fn compaction_filter(_level: u32, _key: &[u8], value: &[u8]) -> CompactionDecisi
         "Running compaction filter in thread {:?}",
         thread::current()
     );
-    if let Ok(data) = deserialize(value.to_vec()) {
+    if let Ok(data) = value.to_vec().as_struct() {
         if let Ok(expired) = is_expired(data.ttl) {
             if expired {
                 CompactionDecision::Remove
