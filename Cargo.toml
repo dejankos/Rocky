@@ -12,6 +12,9 @@ description = "RocksDb as a service"
 structopt = "0.3"
 actix-web = "2.0"
 actix-rt = "1.0"
+actix-web-prom = "0.2"
+prometheus = "0.8"
+
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

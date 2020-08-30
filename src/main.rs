@@ -20,6 +20,10 @@ use crate::conversion::{convert, current_ms, Conversion};
 use crate::db::DbManager;
 use crate::errors::{ApiError, DbError};
 
+use actix_web_prom::PrometheusMetrics;
+use prometheus::core::{AtomicI64, GenericCounterVec};
+use prometheus::{opts, IntCounterVec};
+
 mod errors;
 
 mod config;
@@ -108,6 +112,20 @@ async fn open(db_name: web::Path<String>, db_man: web::Data<DbManager>) -> Respo
     Ok(HttpResponse::Ok().finish())
 }
 
+#[get("/{db_name}")]
+async fn db_size(
+    db_name: web::Path<String>,
+    c: web::Data<GenericCounterVec<AtomicI64>>,
+) -> HttpResponse {
+    let r = c
+        .get_metric_with_label_values(&[&db_name])
+        .map_or(0, |gc| gc.get());
+
+    HttpResponse::Ok()
+        .set(ContentType::plaintext())
+        .body(r.to_string())
+}
+
 #[delete("/{db_name}")]
 async fn close(db_name: web::Path<String>, db_man: web::Data<DbManager>) -> Response<HttpResponse> {
     db_man.close(db_name.into_inner()).await?;
@@ -155,6 +173,11 @@ async fn remove(p_val: web::Path<PathVal>, db_man: web::Data<DbManager>) -> Resp
     Ok(HttpResponse::Ok().finish())
 }
 
+#[get("/health")]
+async fn health() -> HttpResponse {
+    HttpResponse::Ok().finish()
+}
+
 // main thread will panic! if config can't be initialized
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
@@ -173,17 +196,34 @@ async fn main() -> std::io::Result<()> {
 
     let db_manager = DbManager::new(db_cfg)?;
     db_manager.init();
-
     let db_manager = web::Data::new(db_manager);
+
+    let prometheus = PrometheusMetrics::new("api", Some("/metrics"), None);
+
+    let counter_opts = opts!("db_size_counter", "Database size").namespace("db");
+    let counter = IntCounterVec::new(counter_opts, &["db_name"]).unwrap();
+    prometheus
+        .registry
+        .register(Box::new(counter.clone()))
+        .unwrap();
+
+    counter.with_label_values(&["baza1"]).inc();
+
+    let c = web::Data::new(counter);
+
     HttpServer::new(move || {
         App::new()
             .wrap(ErrorHandlers::new().handler(http::StatusCode::NOT_FOUND, not_found))
+            .wrap(prometheus.clone())
             .app_data(db_manager.clone())
+            .app_data(c.clone())
             .service(open)
             .service(close)
             .service(store)
             .service(read)
             .service(remove)
+            .service(health)
+            .service(db_size)
     })
     .bind(service_cfg.bind_address())?
     .workers(service_cfg.workers())

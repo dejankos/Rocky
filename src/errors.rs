@@ -21,7 +21,7 @@ pub enum ApiError {
     Msg(String),
 }
 
-// TODO remove dyn
+// TODO impl conversion errors
 impl From<Box<dyn std::error::Error>> for DbError {
     fn from(boxed: Box<dyn error::Error>) -> Self {
         DbError::Conversion(boxed.to_string())

@@ -151,9 +151,3 @@ fn get_compaction_style(s: &str) -> DBCompactionStyle {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn load() {}
-}
