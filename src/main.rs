@@ -5,11 +5,11 @@ use std::fs::File;
 
 use actix_web::body::{Body, ResponseBody};
 use actix_web::http::header::ContentType;
-
 use actix_web::middleware::errhandlers::{ErrorHandlerResponse, ErrorHandlers};
 use actix_web::web::Bytes;
 use actix_web::{delete, dev, get, http, post, put, HttpRequest, HttpResponse, ResponseError};
 use actix_web::{web, App, HttpServer};
+use actix_web_prom::PrometheusMetrics;
 use log::LevelFilter;
 use serde::Deserialize;
 use simplelog::{ConfigBuilder, TermLogger, TerminalMode, ThreadLogMode, WriteLogger};
@@ -19,10 +19,6 @@ use crate::config::{load_db_config, load_service_config};
 use crate::conversion::{convert, current_ms, Conversion};
 use crate::db::DbManager;
 use crate::errors::{ApiError, DbError};
-
-use actix_web_prom::PrometheusMetrics;
-use prometheus::core::{AtomicI64, GenericCounterVec};
-use prometheus::{opts, IntCounterVec};
 
 mod errors;
 
@@ -112,20 +108,6 @@ async fn open(db_name: web::Path<String>, db_man: web::Data<DbManager>) -> Respo
     Ok(HttpResponse::Ok().finish())
 }
 
-#[get("/{db_name}")]
-async fn db_size(
-    db_name: web::Path<String>,
-    c: web::Data<GenericCounterVec<AtomicI64>>,
-) -> HttpResponse {
-    let r = c
-        .get_metric_with_label_values(&[&db_name])
-        .map_or(0, |gc| gc.get());
-
-    HttpResponse::Ok()
-        .set(ContentType::plaintext())
-        .body(r.to_string())
-}
-
 #[delete("/{db_name}")]
 async fn close(db_name: web::Path<String>, db_man: web::Data<DbManager>) -> Response<HttpResponse> {
     db_man.close(db_name.into_inner()).await?;
@@ -198,38 +180,28 @@ async fn main() -> std::io::Result<()> {
     db_manager.init();
     let db_manager = web::Data::new(db_manager);
 
-    let prometheus = PrometheusMetrics::new("api", Some("/metrics"), None);
-
-    let counter_opts = opts!("db_size_counter", "Database size").namespace("db");
-    let counter = IntCounterVec::new(counter_opts, &["db_name"]).unwrap();
-    prometheus
-        .registry
-        .register(Box::new(counter.clone()))
-        .unwrap();
-
-    counter.with_label_values(&["baza1"]).inc();
-
-    let c = web::Data::new(counter);
-
+    let prometheus = init_prometheus();
     HttpServer::new(move || {
         App::new()
             .wrap(ErrorHandlers::new().handler(http::StatusCode::NOT_FOUND, not_found))
             .wrap(prometheus.clone())
             .app_data(db_manager.clone())
-            .app_data(c.clone())
             .service(open)
             .service(close)
             .service(store)
             .service(read)
             .service(remove)
             .service(health)
-            .service(db_size)
     })
     .bind(service_cfg.bind_address())?
     .workers(service_cfg.workers())
     .shutdown_timeout(60)
     .run()
     .await
+}
+
+fn init_prometheus() -> PrometheusMetrics {
+    PrometheusMetrics::new("api", Some("/metrics"), None)
 }
 
 fn init_logger(log_path: &str, dev_mode: bool) {
