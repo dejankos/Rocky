@@ -7,7 +7,7 @@ use actix_web::body::{Body, ResponseBody};
 use actix_web::http::header::ContentType;
 use actix_web::middleware::errhandlers::{ErrorHandlerResponse, ErrorHandlers};
 use actix_web::web::Bytes;
-use actix_web::{delete, dev, get, http, post, put, HttpRequest, HttpResponse, ResponseError};
+use actix_web::{delete, dev, get, http, post, HttpRequest, HttpResponse, ResponseError};
 use actix_web::{web, App, HttpServer};
 use actix_web_prom::PrometheusMetrics;
 use log::LevelFilter;
@@ -114,7 +114,7 @@ async fn close(db_name: web::Path<String>, db_man: web::Data<DbManager>) -> Resp
     Ok(HttpResponse::Ok().finish())
 }
 
-#[put("/{db_name}/{key}")]
+#[post("/{db_name}/{key}")]
 async fn store(
     p_val: web::Path<PathVal>,
     body: Bytes,

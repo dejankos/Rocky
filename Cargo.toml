@@ -3,7 +3,7 @@ name = "rocky"
 version = "0.1.0"
 authors = ["dkos <kosdejan@yahoo.com>"]
 edition = "2018"
-categories = ["http", "rocksdb"]
+categories = ["http", "rocksdb", "storage"]
 description = "RocksDb as a service"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
