@@ -42,7 +42,7 @@ The response contains data associated with the database and and key provided in 
 From the previous example this is our response  
 ```payload can be anything⏎ ```
 
-Data is always return with content type header  ```content-type: application/octet-stream```
+Data is always return with content type header  ```content-type: application/octet-stream```  
 A successful request is indicated by a ```200 OK HTTP``` status code.  
 
 ### Delete record
@@ -65,6 +65,14 @@ db_config.toml and service_config.toml files under this path if not found will c
 For database performance tuning check the official [RocksDb tuning guide](https://github.com/facebook/rocksdb/wiki/RocksDB-Tuning-Guide)  
 For service performance tuning check example service_config.toml and yes - ```workers``` is the only config parameter that matters, default is number of logical CPUs  
 Example configuration is provided under ```project_root/config```
+
+### TODO
+ - [ ] impl From for errors 
+ - [ ] support for more rocksDb options in config (bloom, block cache..)
+ - [ ] db iterator for on startup init
+ - [ ] code coverage
+ - [ ] performance ?
+ 
 
 ## Licence
 Rocky is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)
