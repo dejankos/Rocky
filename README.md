@@ -59,11 +59,11 @@ Service metrics in [prometheus format](https://github.com/prometheus/docs/blob/m
 
 When running service external configuration and log path should be provided or Rocky will use defaults.  
 ```--log_path```  path where log files should be written  
-```--config_path``` path where service should look for external database and service configuration. Rocky will look for db_config.toml  
- and service_config.toml files under this path if not found will create config files with defaults.
+```--config_path``` path where service should look for external database and service configuration. Rocky will look for 
+db_config.toml and service_config.toml files under this path if not found will create config files with defaults.
  
 For database performance tuning check the official [RocksDb tuning guide](https://github.com/facebook/rocksdb/wiki/RocksDB-Tuning-Guide)  
-For service performance tuning check example service_config.toml and yes - ```workers``` is the only config parameter that matters, default is number of logical CPUs
+For service performance tuning check example service_config.toml and yes - ```workers``` is the only config parameter that matters, default is number of logical CPUs  
 Example configuration is provided under ```project_root/config```
 
 ## Licence
