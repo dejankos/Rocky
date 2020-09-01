@@ -70,6 +70,9 @@ Example configuration is provided under ```project_root/config```
  - [ ] impl From for errors 
  - [ ] support for more rocksDb options in config (bloom, block cache..)
  - [ ] db iterator for on startup init
+ - [ ] channel for expire
+ - [ ] IT
+ - [ ] test compaction
  - [ ] code coverage
  - [ ] performance ?
  
