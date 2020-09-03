@@ -11,7 +11,7 @@ pub struct ServiceConfig {
 }
 
 #[derive(Debug)]
-pub struct DbConfig(RocksDbConfig);
+pub struct DbConfig(pub RocksDbConfig);
 
 impl DbConfig {
     fn new(rocks_cfg: RocksDbConfig) -> Self {

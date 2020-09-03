@@ -92,16 +92,19 @@ impl DbManager {
             .set_compaction_filter("expiration-filter", compaction_filter);
 
         let root_db = open_root_db(&db_cfg)?;
-        Ok(DbManager {
+        let db_manager = DbManager {
             db_cfg,
             root_db,
             dbs: Arc::new(ShardedLock::new(HashMap::new())),
             executor: Mutex::new(ThreadPoolExecutor::new(1)),
-        })
+        };
+        db_manager.init();
+
+        Ok(db_manager)
     }
 
     // will panic in main thread and prevent startup
-    pub fn init(&self) {
+    fn init(&self) {
         info!("Initializing dbs from root ...");
         //TODO db iterator
         self.root_db
@@ -150,6 +153,8 @@ impl DbManager {
         } else {
             if let Some(db) = self.w_lock().remove(&db_name) {
                 info!("Closing db = {} ...", &db_name);
+                self.root_db.w_lock().delete(&db_name)?;
+                //possible expensive call moved to separate thread TODO channels
                 self.tp_mutex().execute(move || match db.close(&db_name) {
                     Ok(_) => info!("Db = {} closed", &db_name),
                     Err(e) => error!("Error closing db = {}, e = {}", &db_name, e),

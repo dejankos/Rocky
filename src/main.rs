@@ -177,7 +177,6 @@ async fn main() -> std::io::Result<()> {
     info!("Loaded db configuration = {:#?}", &db_cfg);
 
     let db_manager = DbManager::new(db_cfg)?;
-    db_manager.init();
     let db_manager = web::Data::new(db_manager);
 
     let prometheus = init_prometheus();
@@ -216,5 +215,64 @@ fn init_logger(log_path: &str, dev_mode: bool) {
         let log_file =
             File::create(format!("{}/rocky.log", log_path)).expect("Can't create log file");
         WriteLogger::init(LevelFilter::Info, cfg, log_file).expect("Failed to init file logger")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use actix_web::dev::ServiceResponse;
+    use actix_web::http::StatusCode;
+    use actix_web::{test, web, App, Error};
+
+    use crate::config::{DbConfig, RocksDbConfig};
+    use crate::conversion::bytes_to_str;
+
+    use super::*;
+
+    impl DbConfig {
+        pub fn new_with_defaults() -> Self {
+            DbConfig(RocksDbConfig::default())
+        }
+    }
+
+    #[actix_rt::test]
+    async fn should_open_and_close_db() -> Result<(), Error> {
+        std::env::set_var("RUST_BACKTRACE", "full");
+
+        let db_manager = DbManager::new(DbConfig::new_with_defaults())?;
+        let mut app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db_manager))
+                .service(open)
+                .service(close),
+        )
+        .await;
+
+        let req = test::TestRequest::post().uri("/test_db").to_request();
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(
+            StatusCode::OK,
+            res.status(),
+            "Received payload:: {:?}",
+            response_as_str(res)
+        );
+
+        let req = test::TestRequest::delete().uri("/test_db").to_request();
+        let res = test::call_service(&mut app, req).await;
+        assert_eq!(
+            StatusCode::OK,
+            res.status(),
+            "Received payload:: {:?}",
+            response_as_str(res)
+        );
+        Ok(())
+    }
+
+    fn response_as_str(res: ServiceResponse<Body>) -> Conversion<String> {
+        match res.response().body().as_ref() {
+            Some(Body::Bytes(bytes)) => bytes_to_str(bytes),
+            _ => Ok("empty".to_string()),
+        }
     }
 }
