@@ -123,7 +123,7 @@ impl DbManager {
     }
 
     pub async fn open(&self, db_name: String) -> DbResult<()> {
-        if self.is_present(&db_name) {
+        if self.contains(&db_name) {
             warn!("Db {} already exists", &db_name);
             Err(DbError::Validation(format!(
                 "Database {} already exists",
@@ -145,7 +145,7 @@ impl DbManager {
     }
 
     pub async fn close(&self, db_name: String) -> DbResult<()> {
-        if self.not_present(&db_name) {
+        if self.not_contains(&db_name) {
             Err(DbError::Validation(format!(
                 "Can't close {} db - doesn't exist",
                 &db_name
@@ -209,12 +209,12 @@ impl DbManager {
         }
     }
 
-    fn is_present(&self, db_name: &str) -> bool {
+    pub fn contains(&self, db_name: &str) -> bool {
         self.r_lock().contains_key(db_name)
     }
 
-    fn not_present(&self, db_name: &str) -> bool {
-        !self.is_present(db_name)
+    fn not_contains(&self, db_name: &str) -> bool {
+        !self.contains(db_name)
     }
 
     fn tp_mutex(&self) -> MutexGuard<'_, ThreadPoolExecutor> {

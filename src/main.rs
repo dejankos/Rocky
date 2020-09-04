@@ -108,6 +108,16 @@ async fn open(db_name: web::Path<String>, db_man: web::Data<DbManager>) -> Respo
     Ok(HttpResponse::Ok().finish())
 }
 
+#[get("/{db_name}")]
+async fn exists(db_name: web::Path<String>, db_man: web::Data<DbManager>) -> HttpResponse {
+    let found = db_man.contains(&db_name.into_inner());
+    if found {
+        HttpResponse::Ok().finish()
+    } else {
+        HttpResponse::NoContent().finish()
+    }
+}
+
 #[delete("/{db_name}")]
 async fn close(db_name: web::Path<String>, db_man: web::Data<DbManager>) -> Response<HttpResponse> {
     db_man.close(db_name.into_inner()).await?;
@@ -187,6 +197,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(db_manager.clone())
             .service(open)
             .service(close)
+            .service(exists)
             .service(store)
             .service(read)
             .service(remove)
@@ -220,7 +231,6 @@ fn init_logger(log_path: &str, dev_mode: bool) {
 
 #[cfg(test)]
 mod tests {
-
     use actix_web::dev::ServiceResponse;
     use actix_web::http::StatusCode;
     use actix_web::{test, web, App, Error};

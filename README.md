@@ -9,7 +9,7 @@ You can open a new db with a ```POST``` request on ```SERVICE_URL:SERVICE_PORT/{
 
 ```curl -X POST localhost:8080/database_1```
 
-A successful request is indicated by a ```200 OK HTTP``` status code.  
+A successful request is indicated by a ```200 OK``` HTTP status code.  
 Each database is created with the same [configuration](#Configuration).
 
 ### Close db
@@ -17,14 +17,21 @@ You can close an existing db with a ```DELETE``` request on ```SERVICE_URL:SERVI
 
 ```curl -X DELETE localhost:8080/database_1```
 
-A successful request is indicated by a ```200 OK HTTP``` status code.
+A successful request is indicated by a ```200 OK``` HTTP status code.
+
+### Check if db exists
+You can check if a database exists/already open with a ```GET``` request on ```SERVICE_URL:SERVICE_PORT/{db_name}```  
+
+```curl -v localhost:8080/database_1```
+
+A successful request is indicated by a ```200 OK``` HTTP status code for an existing database and ```204 No Content``` HTTP status code for a non-existing database.
 
 ### Store record
 You can write data with a ```POST``` request on ```SERVICE_URL:SERVICE_PORT/{db_name}/{key}```  
 
 ```curl -d 'payload can be anything' localhost:8080/database_1/record_1```  
 
-A successful request is indicated by a ```200 OK HTTP``` status code.
+A successful request is indicated by a ```200 OK``` HTTP status code.
 
 #### TTL support
 Rocky support time to live per record provided in milliseconds.  
@@ -43,14 +50,14 @@ From the previous example this is our response
 ```payload can be anything⏎ ```
 
 Data is always return with content type header  ```content-type: application/octet-stream```  
-A successful request is indicated by a ```200 OK HTTP``` status code.  
+A successful request is indicated by a ```200 OK``` HTTP status code.  
 
 ### Delete record
 You can delete data with a ```DELETE``` request on ```SERVICE_URL:SERVICE_PORT/{db_name}/{key}```  
 
 ```curl -X DELETE localhost:8080/database_1/record_1```
 
-A successful request is indicated by a ```200 OK HTTP``` status code.  
+A successful request is indicated by a ```200 OK``` HTTP status code.  
 
 ### Metrics
 Service metrics in [prometheus format](https://github.com/prometheus/docs/blob/master/content/docs/instrumenting/exposition_formats.md) are available for scraping under ```SERVICE_URL:SERVICE_PORT/metrics```  
@@ -67,7 +74,7 @@ For service performance tuning check example service_config.toml and yes - ```wo
 Example configuration is provided under ```project_root/config```
 
 ### TODO
- - [ ] IT
+ - [ ] move IT to separate module
  - [ ] impl From for errors 
  - [ ] support for more rocksDb options in config (bloom, block cache..)
  - [ ] db iterator for on startup init
