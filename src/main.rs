@@ -148,12 +148,12 @@ async fn read(p_val: web::Path<PathVal>, db_man: web::Data<DbManager>) -> Respon
         .read(p_val.db_name.as_str(), p_val.key.as_str())
         .await?;
 
-    let mut http_res = HttpResponse::Ok();
-    http_res.set(ContentType::octet_stream());
     Ok(if let Some(bytes) = res {
-        http_res.body(bytes)
+        HttpResponse::Ok()
+            .set(ContentType::octet_stream())
+            .body(bytes)
     } else {
-        http_res.finish()
+        HttpResponse::NoContent().finish()
     })
 }
 
@@ -230,59 +230,4 @@ fn init_logger(log_path: &str, dev_mode: bool) {
 }
 
 #[cfg(test)]
-mod tests {
-    use actix_web::dev::ServiceResponse;
-    use actix_web::http::StatusCode;
-    use actix_web::{test, web, App, Error};
-
-    use crate::config::{DbConfig, RocksDbConfig};
-    use crate::conversion::bytes_to_str;
-
-    use super::*;
-
-    impl DbConfig {
-        pub fn new_with_defaults() -> Self {
-            DbConfig(RocksDbConfig::default())
-        }
-    }
-
-    #[actix_rt::test]
-    async fn should_open_and_close_db() -> Result<(), Error> {
-        std::env::set_var("RUST_BACKTRACE", "full");
-
-        let db_manager = DbManager::new(DbConfig::new_with_defaults())?;
-        let mut app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(db_manager))
-                .service(open)
-                .service(close),
-        )
-        .await;
-
-        let req = test::TestRequest::post().uri("/test_db").to_request();
-        let res = test::call_service(&mut app, req).await;
-        assert_eq!(
-            StatusCode::OK,
-            res.status(),
-            "Received payload:: {:?}",
-            response_as_str(res)
-        );
-
-        let req = test::TestRequest::delete().uri("/test_db").to_request();
-        let res = test::call_service(&mut app, req).await;
-        assert_eq!(
-            StatusCode::OK,
-            res.status(),
-            "Received payload:: {:?}",
-            response_as_str(res)
-        );
-        Ok(())
-    }
-
-    fn response_as_str(res: ServiceResponse<Body>) -> Conversion<String> {
-        match res.response().body().as_ref() {
-            Some(Body::Bytes(bytes)) => bytes_to_str(bytes),
-            _ => Ok("empty".to_string()),
-        }
-    }
-}
+mod integration_tests;

@@ -50,7 +50,7 @@ From the previous example this is our response
 ```payload can be anything⏎ ```
 
 Data is always return with content type header  ```content-type: application/octet-stream```  
-A successful request is indicated by a ```200 OK``` HTTP status code.  
+A successful request is indicated by a ```200 OK``` HTTP status code for an existing record and ```204 No Content``` HTTP status code for a non-existing record.
 
 ### Delete record
 You can delete data with a ```DELETE``` request on ```SERVICE_URL:SERVICE_PORT/{db_name}/{key}```  
@@ -74,8 +74,8 @@ For service performance tuning check example service_config.toml and yes - ```wo
 Example configuration is provided under ```project_root/config```
 
 ### TODO
- - [ ] move IT to separate module
  - [ ] impl From for errors 
+ - [ ] fix running test in parallel
  - [ ] support for more rocksDb options in config (bloom, block cache..)
  - [ ] db iterator for on startup init
  - [ ] channel for expire
@@ -83,7 +83,7 @@ Example configuration is provided under ```project_root/config```
  - [ ] code coverage
  - [ ] docker 
  - [ ] range scan 
- - [ ] performance
+ - [ ] benchmark
  
 
 ## Licence
