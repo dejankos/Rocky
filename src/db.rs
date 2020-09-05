@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::thread;
+use std::{fs, thread};
 
 use actix_web::web::Bytes;
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::DbConfig;
 use crate::conversion::{bytes_to_str, current_ms, Conversion, FromBytes, IntoBytes};
 use crate::errors::DbError;
+use std::fmt::Debug;
 
 const ROOT_DB_NAME: &str = "root";
 
@@ -153,10 +154,14 @@ impl DbManager {
         } else {
             if let Some(db) = self.w_lock().remove(&db_name) {
                 info!("Closing db = {} ...", &db_name);
+                let path = self.db_cfg.db_path(&db_name);
                 self.root_db.w_lock().delete(&db_name)?;
                 //possible expensive call moved to separate thread TODO channels
                 self.tp_mutex().execute(move || match db.close(&db_name) {
-                    Ok(_) => info!("Db = {} closed", &db_name),
+                    Ok(_) => {
+                        info!("Db = {} closed. Deleting db files...", &db_name);
+                        remove_files(path);
+                    }
                     Err(e) => error!("Error closing db = {}, e = {}", &db_name, e),
                 });
             }
@@ -233,10 +238,7 @@ impl DbManager {
 }
 
 fn open_root_db(db_cfg: &DbConfig) -> DbResult<Db> {
-    Db::new(
-        format!("{}/{}", db_cfg.path(), ROOT_DB_NAME),
-        &db_cfg.root_db_options(),
-    )
+    Db::new(db_cfg.db_path(ROOT_DB_NAME), &db_cfg.root_db_options())
 }
 
 fn not_exists(db_name: &str) -> DbError {
@@ -248,6 +250,20 @@ fn is_expired(ttl: u128) -> Conversion<bool> {
         Ok(false)
     } else {
         Ok(ttl < current_ms()?)
+    }
+}
+
+fn remove_files<P>(path: P)
+where
+    P: AsRef<Path> + Debug,
+{
+    if let Err(e) = fs::remove_dir_all(&path) {
+        error!(
+            "Failed to remove db files on path = {:?}, err = {}",
+            path, e
+        );
+    } else {
+        info!("Removed files for db on path {:?}", path);
     }
 }
 

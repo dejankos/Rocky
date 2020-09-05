@@ -73,12 +73,12 @@ For database performance tuning check the official [RocksDb tuning guide](https:
 For service performance tuning check example service_config.toml and yes - ```workers``` is the only config parameter that matters, default is number of logical CPUs  
 Example configuration is provided under ```project_root/config```
 
+
 ### TODO
- - [ ] impl From for errors 
- - [ ] fix running test in parallel
  - [ ] support for more rocksDb options in config (bloom, block cache..)
- - [ ] db iterator for on startup init
  - [ ] channel for expire
+ - [ ] fix running test in parallel
+ - [ ] db iterator for on startup init
  - [ ] test compaction
  - [ ] code coverage
  - [ ] docker 

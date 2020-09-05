@@ -1,8 +1,7 @@
-
 use std::time::Duration;
-use std::{fs, io, thread};
+use std::{thread};
 
-use actix_web::dev::{ServiceResponse};
+use actix_web::dev::ServiceResponse;
 use actix_web::http::StatusCode;
 use actix_web::{test, web, App, Error};
 
@@ -57,7 +56,6 @@ async fn should_open_and_close_db() -> Result<(), Error> {
         "Received payload:: {:?}",
         response_as_str(res)
     );
-    cleanup()?;
     Ok(())
 }
 
@@ -119,7 +117,6 @@ async fn should_add_and_delete_record() -> Result<(), Error> {
         "Received payload:: {:?}",
         response_as_str(res)
     );
-    cleanup()?;
     Ok(())
 }
 
@@ -184,13 +181,7 @@ async fn should_expire_record() -> Result<(), Error> {
         "Received payload:: {:?}",
         response_as_str(res)
     );
-    cleanup()?;
     Ok(())
-}
-
-fn cleanup() -> io::Result<()> {
-    let config = DbConfig::new_with_defaults();
-    fs::remove_dir_all(config.path())
 }
 
 fn response_as_str(res: ServiceResponse<Body>) -> Conversion<String> {

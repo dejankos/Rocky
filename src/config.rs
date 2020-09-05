@@ -32,6 +32,10 @@ impl DbConfig {
     pub fn path(&self) -> &str {
         self.0.path.as_ref()
     }
+
+    pub fn db_path(&self, db_name: &str) -> String {
+        format!("{}/{}", self.path(), db_name)
+    }
 }
 
 impl ServiceConfig {
