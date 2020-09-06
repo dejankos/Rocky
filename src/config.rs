@@ -68,8 +68,6 @@ pub struct RocksDbConfig {
     level_zero_stop_writes_trigger: i32,
     level_zero_slowdown_writes_trigger: i32,
     compaction_style: String,
-    max_background_compactions: i32,
-    max_background_flushes: i32,
 }
 
 impl Default for RocksDbConfig {
@@ -89,8 +87,6 @@ impl Default for RocksDbConfig {
             level_zero_stop_writes_trigger: 24,
             level_zero_slowdown_writes_trigger: 24,
             compaction_style: "Level".to_string(),
-            max_background_compactions: 2,
-            max_background_flushes: 2,
         }
     }
 }
@@ -120,8 +116,6 @@ impl RocksDbConfig {
         opts.set_level_zero_stop_writes_trigger(self.level_zero_stop_writes_trigger);
         opts.set_level_zero_slowdown_writes_trigger(self.level_zero_slowdown_writes_trigger);
         opts.set_compaction_style(get_compaction_style(&self.compaction_style));
-        opts.set_max_background_compactions(self.max_background_compactions);
-        opts.set_max_background_flushes(self.max_background_flushes);
         opts.create_if_missing(true);
 
         opts
