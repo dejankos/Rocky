@@ -3,8 +3,8 @@ name = "rocky"
 version = "0.1.0"
 authors = ["dkos <kosdejan@yahoo.com>"]
 edition = "2018"
-categories = ["http", "rocksdb", "storage"]
-description = "RocksDb as a service"
+categories = ["http", "rocksdb", "storage", "actix-web"]
+description = "RocksDb as a service with support for multiple databases and record expiration"
 
 [dependencies]
 structopt = "0.3"
