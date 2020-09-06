@@ -1,5 +1,5 @@
+use std::thread;
 use std::time::Duration;
-use std::{thread};
 
 use actix_web::dev::ServiceResponse;
 use actix_web::http::StatusCode;
@@ -177,6 +177,53 @@ async fn should_expire_record() -> Result<(), Error> {
     let res = test::call_service(&mut app, req).await;
     assert_eq!(
         StatusCode::OK,
+        res.status(),
+        "Received payload:: {:?}",
+        response_as_str(res)
+    );
+    Ok(())
+}
+
+#[actix_rt::test]
+async fn should_check_service_status() -> Result<(), Error> {
+    std::env::set_var("RUST_BACKTRACE", "full");
+
+    let db_manager = DbManager::new(DbConfig::new_with_defaults())?;
+    let mut app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(db_manager))
+            .service(health),
+    )
+    .await;
+
+    let req = test::TestRequest::get().uri("/health").to_request();
+    let res = test::call_service(&mut app, req).await;
+    assert_eq!(
+        StatusCode::OK,
+        res.status(),
+        "Received payload:: {:?}",
+        response_as_str(res)
+    );
+    Ok(())
+}
+
+#[actix_rt::test]
+async fn should_handle_404() -> Result<(), Error> {
+    std::env::set_var("RUST_BACKTRACE", "full");
+
+    let db_manager = DbManager::new(DbConfig::new_with_defaults())?;
+    let mut app = test::init_service(
+        App::new()
+            .wrap(ErrorHandlers::new().handler(http::StatusCode::NOT_FOUND, not_found))
+            .app_data(web::Data::new(db_manager))
+            .service(exists),
+    )
+    .await;
+
+    let req = test::TestRequest::put().uri("/test_db").to_request(); // no put handles
+    let res = test::call_service(&mut app, req).await;
+    assert_eq!(
+        StatusCode::NOT_FOUND,
         res.status(),
         "Received payload:: {:?}",
         response_as_str(res)
