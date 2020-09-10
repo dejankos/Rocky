@@ -1,19 +1,18 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::path::Path;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::{fs, thread};
 
 use actix_web::web::Bytes;
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
-use executors::threadpool_executor::ThreadPoolExecutor;
-use executors::Executor;
 use rocksdb::{CompactionDecision, IteratorMode, Options, DB};
 use serde::{Deserialize, Serialize};
 
 use crate::config::DbConfig;
 use crate::conversion::{bytes_to_str, current_ms, Conversion, FromBytes, IntoBytes};
 use crate::errors::DbError;
-use std::fmt::Debug;
 
 const ROOT_DB_NAME: &str = "root";
 
@@ -35,7 +34,26 @@ pub struct DbManager {
     db_cfg: DbConfig,
     root_db: Db,
     dbs: SafeRW<HashMap<String, Db>>,
-    executor: Mutex<ThreadPoolExecutor>,
+    tx: Mutex<Sender<BoxedFnOnce>>,
+}
+
+pub struct BoxedFnOnce {
+    data: Box<dyn FnOnce() + Send + 'static>,
+}
+
+impl BoxedFnOnce {
+    fn new<T>(data: T) -> BoxedFnOnce
+    where
+        T: FnOnce() + Send + 'static,
+    {
+        BoxedFnOnce {
+            data: Box::new(data),
+        }
+    }
+
+    fn invoke(self) {
+        (self.data)()
+    }
 }
 
 impl Data {
@@ -93,19 +111,22 @@ impl DbManager {
             .set_compaction_filter("expiration-filter", compaction_filter);
 
         let root_db = open_root_db(&db_cfg)?;
+        let (tx, rx) = mpsc::channel::<BoxedFnOnce>();
+
         let db_manager = DbManager {
             db_cfg,
             root_db,
             dbs: Arc::new(ShardedLock::new(HashMap::new())),
-            executor: Mutex::new(ThreadPoolExecutor::new(1)),
+            tx: Mutex::new(tx),
         };
-        db_manager.init();
+        db_manager.open_dbs();
+        db_manager.reg_receiver_thread(rx);
 
         Ok(db_manager)
     }
 
     // will panic in main thread and prevent startup
-    fn init(&self) {
+    fn open_dbs(&self) {
         info!("Initializing dbs from root ...");
         //TODO db iterator
         self.root_db
@@ -121,6 +142,18 @@ impl DbManager {
                 info!("Initializing db = {} on path = {}", &name, &path);
                 self.open_on_path(name, path).expect("Failed to open db");
             });
+    }
+
+    fn reg_receiver_thread(&self, rx: Receiver<BoxedFnOnce>) {
+        thread::Builder::new()
+            .name("async-expire-thread".into())
+            .spawn(move || {
+                for boxed in rx {
+                    info!("expiring key in thead {:?}", thread::current());
+                    boxed.invoke()
+                }
+            })
+            .expect("Failed to register receiver thread");
     }
 
     pub async fn open(&self, db_name: String) -> DbResult<()> {
@@ -156,18 +189,23 @@ impl DbManager {
                 info!("Closing db = {} ...", &db_name);
                 let path = self.db_cfg.db_path(&db_name);
                 self.root_db.w_lock().delete(&db_name)?;
-                //possible expensive call moved to separate thread TODO channels
-                self.tp_mutex().execute(move || match db.close(&db_name) {
-                    Ok(_) => {
-                        info!("Db = {} closed. Deleting db files...", &db_name);
-                        remove_files(path);
-                    }
-                    Err(e) => error!("Error closing db = {}, e = {}", &db_name, e),
-                });
+                self.try_close_async(db, db_name, path);
             }
 
             Ok(())
         }
+    }
+
+    fn try_close_async(&self, db: Db, db_name: String, path: String) {
+        let _ = self
+            .tx_mutex()
+            .send(BoxedFnOnce::new(move || match db.close(&db_name) {
+                Ok(_) => {
+                    info!("Db = {} closed. Deleting db files...", &db_name);
+                    remove_files(path);
+                }
+                Err(e) => error!("Error closing db = {}, e = {}", &db_name, e),
+            }));
     }
 
     pub async fn store(&self, db_name: &str, key: &str, val: Bytes, ttl: u128) -> DbResult<()> {
@@ -200,11 +238,11 @@ impl DbManager {
     fn expire(&self, db: &Db, key: &str) {
         let db = db.clone();
         let key = key.to_string();
-        self.tp_mutex().execute(move || {
+        let _ = self.tx_mutex().send(BoxedFnOnce::new(move || {
             if let Err(e) = db.w_lock().delete(&key) {
                 error!("Failed to expire key = {}, e = {}", key, e);
             }
-        });
+        }));
     }
 
     pub async fn remove(&self, db_name: &str, key: &str) -> DbResult<()> {
@@ -222,10 +260,10 @@ impl DbManager {
         !self.contains(db_name)
     }
 
-    fn tp_mutex(&self) -> MutexGuard<'_, ThreadPoolExecutor> {
-        self.executor
+    fn tx_mutex(&self) -> MutexGuard<'_, Sender<BoxedFnOnce>> {
+        self.tx
             .lock()
-            .expect("Failed to acquire executor lock")
+            .expect("Failed to acquire channel sender lock")
     }
 
     fn r_lock(&self) -> ShardedLockReadGuard<'_, HashMap<String, Db>> {

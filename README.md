@@ -76,7 +76,7 @@ Example configuration is provided under ```project_root/config```
 
 ### TODO
  - [ ] support for more rocksDb options in config (bloom, block cache..)
- - [ ] channel for expire
+ - [X] channel for expire
  - [ ] fix running test in parallel (TODO per test db root path)
  - [ ] db iterator for on startup init
  - [ ] test compaction
