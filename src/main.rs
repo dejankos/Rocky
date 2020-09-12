@@ -171,7 +171,7 @@ async fn health() -> HttpResponse {
 }
 
 // main thread will panic! if config can't be initialized
-#[actix_rt::main]
+#[actix_web::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=error");
     std::env::set_var("RUST_BACKTRACE", "1");
@@ -189,11 +189,11 @@ async fn main() -> std::io::Result<()> {
     let db_manager = DbManager::new(db_cfg)?;
     let db_manager = web::Data::new(db_manager);
 
-    let prometheus = init_prometheus();
+    let _prometheus = init_prometheus();
     HttpServer::new(move || {
         App::new()
             .wrap(ErrorHandlers::new().handler(http::StatusCode::NOT_FOUND, not_found))
-            .wrap(prometheus.clone())
+            //  .wrap(prometheus.clone()) // TODO waiting 3.0 upgrade
             .app_data(db_manager.clone())
             .service(open)
             .service(close)

@@ -94,8 +94,9 @@ $ cargo test -- --test-threads=1
 
 
 ### TODO
- - [ ] support for more rocksDb options in config (bloom, block cache..)
+ - [X] actix-web 3.0 - fixed mem leak
  - [X] channel for expire
+ - [ ] support for more rocksDb options in config (bloom, block cache..)
  - [ ] fix running test in parallel (TODO per test db root path)
  - [ ] db iterator for on startup init
  - [ ] test compaction
