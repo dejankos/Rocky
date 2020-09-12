@@ -9,7 +9,6 @@ use crate::config::{DbConfig, RocksDbConfig};
 use crate::conversion::bytes_to_str;
 use actix_web::rt as actix_rt;
 
-
 use super::*;
 
 impl DbConfig {

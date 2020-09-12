@@ -149,7 +149,6 @@ impl DbManager {
             .name("async-expire-thread".into())
             .spawn(move || {
                 for boxed in rx {
-                    info!("expiring key in thead {:?}", thread::current());
                     boxed.invoke()
                 }
             })

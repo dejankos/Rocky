@@ -13,4 +13,11 @@ level_zero_stop_writes_trigger = 24
 level_zero_slowdown_writes_trigger = 20
 compaction_style = "Level"
 #block based
+use_cache = true
+cache_defaults = true
+cache_size = 100000
+block_cache = 10000
+bloom_filter_bits_per_key = 8
+bloom_filter_block_based = true
+index_type = "HashSearch"
 
