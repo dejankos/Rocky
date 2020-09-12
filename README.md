@@ -73,6 +73,25 @@ For database performance tuning check the official [RocksDb tuning guide](https:
 For service performance tuning check example service_config.toml and yes - ```workers``` is the only config parameter that matters, default is number of logical CPUs  
 Example configuration is provided under ```project_root/config```
 
+## Build from source
+
+### Install Rust
+```bash
+$ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+Update to latest stable version
+```bash
+$ rustup update
+```
+### Build
+```bash
+$ cargo build
+```
+### Run IT
+```bash
+$ cargo test -- --test-threads=1
+```
+
 
 ### TODO
  - [ ] support for more rocksDb options in config (bloom, block cache..)
