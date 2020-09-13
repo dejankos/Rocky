@@ -92,6 +92,35 @@ $ cargo build
 $ cargo test -- --test-threads=1
 ```
 
+## Performance
+
+Tested on:
+CPU: Intel© Core™ i7-8750H CPU @ 2.20GHz × 6
+RAM: 16Gib DDR4 2667 MHz
+SSD: Samsung 970 EVO SSD
+
+With:
+Worker threads: 6
+Cache settings: defaults
+Payload: 1kb
+
+#### Write
+![Write latency](docs/write_latency.png?raw=true "Write latency")
+![Write tps](docs/write_tps.png?raw=true "Write tps")
+
+#### Read
+![Read latency](docs/read_latency.png?raw=true "Read latency")
+![Read tps](docs/read_tps.png?raw=true "Read tps")
+
+#### Delete
+![Delete latency](docs/delete_latency.png?raw=true "Delete latency")
+![Delete tps](docs/delete_tps.png?raw=true "Delete tps")
+
+
+
+
+
+
 
 ### TODO
  - [ ] fix running test in parallel (TODO per test db root path)

@@ -191,9 +191,9 @@ fn get_index_type(s: &str) -> BlockBasedIndexType {
         _ => {
             error!(
                 "Unknown block based index type {} - fallback to default {}",
-                &s, "HashSearch"
+                &s, "BinarySearch"
             );
-            BlockBasedIndexType::HashSearch
+            BlockBasedIndexType::BinarySearch
         }
     }
 }

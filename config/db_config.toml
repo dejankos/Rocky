@@ -19,5 +19,5 @@ cache_size = 100000
 block_cache = 10000
 bloom_filter_bits_per_key = 8
 bloom_filter_block_based = true
-index_type = "HashSearch"
+index_type = "binarysearch"
 

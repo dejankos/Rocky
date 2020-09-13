@@ -1,4 +1,4 @@
 ip = "localhost"
 port = 8080
-workers = 4
+workers = 6
 dev_mode = true # logs to terminal
