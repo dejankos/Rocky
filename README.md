@@ -60,7 +60,7 @@ You can delete data with a ```DELETE``` request on ```SERVICE_URL:SERVICE_PORT/{
 A successful request is indicated by a ```200 OK``` HTTP status code.  
 
 ### Metrics
-Service metrics in [prometheus format](https://github.com/prometheus/docs/blob/master/content/docs/instrumenting/exposition_formats.md) are available for scraping under ```SERVICE_URL:SERVICE_PORT/metrics```  
+Service metrics in [prometheus format](https://github.com/prometheus/docs/blob/master/content/docs/instrumenting/exposition_formats.md) are available for scraping under ```SERVICE_URL:SERVICE_PORT/rocky/prometheus/metrics```  
 
 ## Configuration
 
@@ -115,12 +115,6 @@ Payload: 1kb
 #### Delete
 ![Delete latency](docs/delete_latency.png?raw=true "Delete latency")
 ![Delete tps](docs/delete_tps.png?raw=true "Delete tps")
-
-
-
-
-
-
 
 ### TODO
  - [ ] fix running test in parallel (TODO per test db root path)

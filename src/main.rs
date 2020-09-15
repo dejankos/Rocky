@@ -189,11 +189,11 @@ async fn main() -> std::io::Result<()> {
     let db_manager = DbManager::new(db_cfg)?;
     let db_manager = web::Data::new(db_manager);
 
-    let _prometheus = init_prometheus();
+    let prometheus = init_prometheus();
     HttpServer::new(move || {
         App::new()
             .wrap(ErrorHandlers::new().handler(http::StatusCode::NOT_FOUND, not_found))
-            //  .wrap(prometheus.clone()) // TODO waiting 3.0 upgrade
+            .wrap(prometheus.clone())
             .app_data(db_manager.clone())
             .service(open)
             .service(close)
@@ -211,7 +211,7 @@ async fn main() -> std::io::Result<()> {
 }
 
 fn init_prometheus() -> PrometheusMetrics {
-    PrometheusMetrics::new("api", Some("/metrics"), None)
+    PrometheusMetrics::new("api", Some("/rocky/prometheus/metrics"), None)
 }
 
 fn init_logger(log_path: &str, dev_mode: bool) {
