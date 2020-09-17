@@ -54,7 +54,7 @@ impl ServiceConfig {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RocksDbConfig {
-    path: String,
+    pub path: String,
     max_open_files: i32,
     fsync: bool,
     bytes_per_sync: u64,

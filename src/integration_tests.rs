@@ -1,19 +1,37 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
 use actix_web::dev::ServiceResponse;
 use actix_web::http::StatusCode;
+use actix_web::rt as actix_rt;
 use actix_web::{test, web, App, Error};
 
 use crate::config::{DbConfig, RocksDbConfig};
 use crate::conversion::bytes_to_str;
-use actix_web::rt as actix_rt;
 
 use super::*;
 
+static COUNTER: AtomicUsize = AtomicUsize::new(1);
+
+fn next() -> usize {
+    COUNTER.fetch_add(1, Ordering::Relaxed)
+}
+
+fn safe_test_name() -> String {
+    if let Some(name) = thread::current().name() {
+        name.into()
+    } else {
+        next().to_string()
+    }
+}
+
 impl DbConfig {
-    pub fn new_with_defaults() -> Self {
-        DbConfig(RocksDbConfig::default())
+    pub fn new_per_test_defaults() -> Self {
+        let mut cfg = RocksDbConfig::default();
+        cfg.path = format!("{}/{}", cfg.path, safe_test_name());
+
+        DbConfig(cfg)
     }
 }
 
@@ -21,7 +39,7 @@ impl DbConfig {
 async fn should_open_and_close_db() -> Result<(), Error> {
     std::env::set_var("RUST_BACKTRACE", "full");
 
-    let db_manager = DbManager::new(DbConfig::new_with_defaults())?;
+    let db_manager = DbManager::new(DbConfig::new_per_test_defaults())?;
     let mut app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_manager))
@@ -64,7 +82,7 @@ async fn should_open_and_close_db() -> Result<(), Error> {
 async fn should_add_and_delete_record() -> Result<(), Error> {
     std::env::set_var("RUST_BACKTRACE", "full");
 
-    let db_manager = DbManager::new(DbConfig::new_with_defaults())?;
+    let db_manager = DbManager::new(DbConfig::new_per_test_defaults())?;
     let mut app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_manager))
@@ -125,7 +143,7 @@ async fn should_add_and_delete_record() -> Result<(), Error> {
 async fn should_expire_record() -> Result<(), Error> {
     std::env::set_var("RUST_BACKTRACE", "full");
 
-    let db_manager = DbManager::new(DbConfig::new_with_defaults())?;
+    let db_manager = DbManager::new(DbConfig::new_per_test_defaults())?;
     let mut app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_manager))
@@ -189,7 +207,7 @@ async fn should_expire_record() -> Result<(), Error> {
 async fn should_check_service_status() -> Result<(), Error> {
     std::env::set_var("RUST_BACKTRACE", "full");
 
-    let db_manager = DbManager::new(DbConfig::new_with_defaults())?;
+    let db_manager = DbManager::new(DbConfig::new_per_test_defaults())?;
     let mut app = test::init_service(
         App::new()
             .app_data(web::Data::new(db_manager))
@@ -212,7 +230,7 @@ async fn should_check_service_status() -> Result<(), Error> {
 async fn should_handle_404() -> Result<(), Error> {
     std::env::set_var("RUST_BACKTRACE", "full");
 
-    let db_manager = DbManager::new(DbConfig::new_with_defaults())?;
+    let db_manager = DbManager::new(DbConfig::new_per_test_defaults())?;
     let mut app = test::init_service(
         App::new()
             .wrap(ErrorHandlers::new().handler(http::StatusCode::NOT_FOUND, not_found))

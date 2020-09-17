@@ -89,7 +89,7 @@ $ cargo build
 ```
 ### Run IT
 ```bash
-$ cargo test -- --test-threads=1
+$ cargo test
 ```
 
 ## Performance
@@ -117,7 +117,7 @@ Payload: 1kb
 ![Delete tps](docs/delete_tps.png?raw=true "Delete tps")
 
 ### TODO
- - [ ] fix running test in parallel (TODO per test db root path)
+ - [X] fix running test in parallel (TODO per test db root path)
  - [ ] db iterator for on startup init
  - [ ] test compaction
  - [ ] code coverage
