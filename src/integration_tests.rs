@@ -1,11 +1,11 @@
+use std::{fs, thread};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread;
 use std::time::Duration;
 
+use actix_web::{App, Error, test, web};
 use actix_web::dev::ServiceResponse;
 use actix_web::http::StatusCode;
 use actix_web::rt as actix_rt;
-use actix_web::{test, web, App, Error};
 
 use crate::config::{DbConfig, RocksDbConfig};
 use crate::conversion::bytes_to_str;
@@ -35,6 +35,12 @@ impl DbConfig {
     }
 }
 
+impl Drop for DbManager {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(RocksDbConfig::default().path);
+    }
+}
+
 #[actix_rt::test]
 async fn should_open_and_close_db() -> Result<(), Error> {
     std::env::set_var("RUST_BACKTRACE", "full");
@@ -47,7 +53,7 @@ async fn should_open_and_close_db() -> Result<(), Error> {
             .service(close)
             .service(exists),
     )
-    .await;
+        .await;
 
     let req = test::TestRequest::post().uri("/test_db").to_request();
     let res = test::call_service(&mut app, req).await;
@@ -92,7 +98,7 @@ async fn should_add_and_delete_record() -> Result<(), Error> {
             .service(remove)
             .service(close),
     )
-    .await;
+        .await;
 
     let req = test::TestRequest::post().uri("/test_db").to_request();
     let res = test::call_service(&mut app, req).await;
@@ -153,7 +159,7 @@ async fn should_expire_record() -> Result<(), Error> {
             .service(remove)
             .service(close),
     )
-    .await;
+        .await;
 
     let req = test::TestRequest::post().uri("/test_db").to_request();
     let res = test::call_service(&mut app, req).await;
@@ -213,7 +219,7 @@ async fn should_check_service_status() -> Result<(), Error> {
             .app_data(web::Data::new(db_manager))
             .service(health),
     )
-    .await;
+        .await;
 
     let req = test::TestRequest::get().uri("/health").to_request();
     let res = test::call_service(&mut app, req).await;
@@ -237,7 +243,7 @@ async fn should_handle_404() -> Result<(), Error> {
             .app_data(web::Data::new(db_manager))
             .service(exists),
     )
-    .await;
+        .await;
 
     let req = test::TestRequest::put().uri("/test_db").to_request(); // no put handles
     let res = test::call_service(&mut app, req).await;
