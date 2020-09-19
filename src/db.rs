@@ -31,7 +31,7 @@ pub struct Data {
 }
 
 pub struct DbManager {
-    db_cfg: DbConfig,
+    pub db_cfg: DbConfig,
     root_db: Db,
     dbs: SafeRW<HashMap<String, Db>>,
     tx: Mutex<Sender<BoxedFnOnce>>,
