@@ -128,7 +128,6 @@ impl DbManager {
     // will panic in main thread and prevent startup
     fn open_dbs(&self) {
         info!("Initializing dbs from root ...");
-        //TODO db iterator
         self.root_db
             .r_lock()
             .iterator(IteratorMode::Start)
