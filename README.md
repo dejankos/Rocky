@@ -117,7 +117,6 @@ Payload: 1kb
 ![Delete tps](docs/delete_tps.png?raw=true "Delete tps")
 
 ### TODO
- - [X] fix running test in parallel (TODO per test db root path)
  - [ ] db iterator for on startup init
  - [ ] test compaction
  - [ ] code coverage
