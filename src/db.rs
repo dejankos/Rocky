@@ -6,18 +6,19 @@ use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::{fs, thread};
 
 use actix_web::web::Bytes;
+use anyhow::anyhow;
+
 use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
 use rocksdb::{CompactionDecision, IteratorMode, Options, DB};
 use serde::{Deserialize, Serialize};
 
 use crate::config::DbConfig;
-use crate::conversion::{bytes_to_str, current_ms, Conversion, FromBytes, IntoBytes};
-use crate::errors::DbError;
+use crate::conversion::{bytes_to_str, current_ms, FromBytes, IntoBytes};
+use crate::errors::ErrorCtx;
 
 const ROOT_DB_NAME: &str = "root";
 
 type SafeRW<T> = Arc<ShardedLock<T>>;
-type DbResult<T> = Result<T, DbError>;
 
 #[derive(Clone)]
 struct Db {
@@ -63,7 +64,7 @@ impl Data {
 }
 
 impl Db {
-    fn new<P>(path: P, opts: &Options) -> DbResult<Self>
+    fn new<P>(path: P, opts: &Options) -> anyhow::Result<Self>
     where
         P: AsRef<Path>,
     {
@@ -73,22 +74,22 @@ impl Db {
         })
     }
 
-    fn put<V>(&self, key: &str, val: V) -> DbResult<()>
+    fn put<V>(&self, key: &str, val: V) -> anyhow::Result<()>
     where
         V: AsRef<[u8]>,
     {
         Ok(self.w_lock().put(key, val)?)
     }
 
-    fn get(&self, key: &str) -> DbResult<Option<Vec<u8>>> {
+    fn get(&self, key: &str) -> anyhow::Result<Option<Vec<u8>>> {
         Ok(self.r_lock().get(key)?)
     }
 
-    fn remove(&self, key: &str) -> DbResult<()> {
-        self.w_lock().delete(key).map_err(DbError::from)
+    fn remove(&self, key: &str) -> anyhow::Result<()> {
+        self.w_lock().delete(key).map_err(anyhow::Error::from)
     }
 
-    fn close<P>(&self, path: P) -> DbResult<()>
+    fn close<P>(&self, path: P) -> anyhow::Result<()>
     where
         P: AsRef<Path>,
     {
@@ -105,7 +106,7 @@ impl Db {
 }
 
 impl DbManager {
-    pub fn new(db_cfg: DbConfig) -> DbResult<Self> {
+    pub fn new(db_cfg: DbConfig) -> anyhow::Result<Self> {
         db_cfg
             .rocks_options()
             .set_compaction_filter("expiration-filter", compaction_filter);
@@ -154,13 +155,13 @@ impl DbManager {
             .expect("Failed to register receiver thread");
     }
 
-    pub async fn open(&self, db_name: String) -> DbResult<()> {
+    pub async fn open(&self, db_name: String) -> anyhow::Result<()> {
         if self.contains(&db_name) {
             warn!("Db {} already exists", &db_name);
-            Err(DbError::Validation(format!(
+            Err(anyhow!(ErrorCtx::Validation(format!(
                 "Database {} already exists",
                 db_name
-            )))
+            ))))
         } else {
             let path = format!("{}/{}", self.db_cfg.path(), db_name);
             info!("Opening Db = {} on path = {}", &db_name, &path);
@@ -170,18 +171,18 @@ impl DbManager {
         }
     }
 
-    fn open_on_path(&self, db_name: String, path: String) -> DbResult<()> {
+    fn open_on_path(&self, db_name: String, path: String) -> anyhow::Result<()> {
         let db = Db::new(&path, &self.db_cfg.rocks_options())?;
         self.w_lock().insert(db_name, db);
         Ok(())
     }
 
-    pub async fn close(&self, db_name: String) -> DbResult<()> {
+    pub async fn close(&self, db_name: String) -> anyhow::Result<()> {
         if self.not_contains(&db_name) {
-            Err(DbError::Validation(format!(
+            Err(anyhow!(ErrorCtx::Validation(format!(
                 "Can't close {} db - doesn't exist",
                 &db_name
-            )))
+            ))))
         } else {
             if let Some(db) = self.w_lock().remove(&db_name) {
                 info!("Closing db = {} ...", &db_name);
@@ -206,7 +207,13 @@ impl DbManager {
             }));
     }
 
-    pub async fn store(&self, db_name: &str, key: &str, val: Bytes, ttl: u128) -> DbResult<()> {
+    pub async fn store(
+        &self,
+        db_name: &str,
+        key: &str,
+        val: Bytes,
+        ttl: u128,
+    ) -> anyhow::Result<()> {
         let bytes = Data::new(ttl, val.to_vec()).as_bytes()?;
         match self.w_lock().get(db_name) {
             Some(db) => db.put(&key, bytes),
@@ -214,7 +221,7 @@ impl DbManager {
         }
     }
 
-    pub async fn read(&self, db_name: &str, key: &str) -> DbResult<Option<Vec<u8>>> {
+    pub async fn read(&self, db_name: &str, key: &str) -> anyhow::Result<Option<Vec<u8>>> {
         match self.r_lock().get(db_name) {
             Some(db) => {
                 if let Some(bytes) = db.get(&key)? {
@@ -243,7 +250,7 @@ impl DbManager {
         }));
     }
 
-    pub async fn remove(&self, db_name: &str, key: &str) -> DbResult<()> {
+    pub async fn remove(&self, db_name: &str, key: &str) -> anyhow::Result<()> {
         match self.w_lock().get(db_name) {
             Some(db) => db.remove(&key),
             None => Err(not_exists(db_name)),
@@ -273,15 +280,18 @@ impl DbManager {
     }
 }
 
-fn open_root_db(db_cfg: &DbConfig) -> DbResult<Db> {
+fn open_root_db(db_cfg: &DbConfig) -> anyhow::Result<Db> {
     Db::new(db_cfg.db_path(ROOT_DB_NAME), &db_cfg.root_db_options())
 }
 
-fn not_exists(db_name: &str) -> DbError {
-    DbError::Validation(format!("Db {} - doesn't exist", &db_name))
+fn not_exists(db_name: &str) -> anyhow::Error {
+    anyhow!(ErrorCtx::Validation(format!(
+        "Db {} - doesn't exist",
+        &db_name
+    )))
 }
 
-fn is_expired(ttl: u128) -> Conversion<bool> {
+fn is_expired(ttl: u128) -> anyhow::Result<bool> {
     if ttl == 0 {
         Ok(false)
     } else {

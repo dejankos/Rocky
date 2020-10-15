@@ -16,9 +16,9 @@ use simplelog::{ConfigBuilder, TermLogger, TerminalMode, ThreadLogMode, WriteLog
 use structopt::StructOpt;
 
 use crate::config::{load_db_config, load_service_config};
-use crate::conversion::{convert, current_ms, Conversion};
+use crate::conversion::{convert, current_ms};
 use crate::db::DbManager;
-use crate::errors::{ApiError, DbError};
+use crate::errors::{convert_err, ApiError, ErrWrapper, ErrorCtx};
 
 mod errors;
 
@@ -26,10 +26,10 @@ mod config;
 mod conversion;
 mod db;
 
-type Response<T> = Result<T, DbError>;
-
 const NO_TTL: u128 = 0;
 const TTL_HEADER: &str = "ttl";
+
+type Response<T> = Result<T, ErrWrapper>;
 
 #[derive(StructOpt, Debug)]
 pub struct PathCfg {
@@ -53,11 +53,11 @@ struct PathVal {
 }
 
 trait Expiration {
-    fn calc_expire(&self) -> Conversion<u128>;
+    fn calc_expire(&self) -> Response<u128>;
 }
 
 impl Expiration for HttpRequest {
-    fn calc_expire(&self) -> Conversion<u128> {
+    fn calc_expire(&self) -> Response<u128> {
         self.headers()
             .get(TTL_HEADER)
             .map(|h| Ok(current_ms()? + convert(h)?))
@@ -65,18 +65,15 @@ impl Expiration for HttpRequest {
     }
 }
 
-impl ResponseError for DbError {
+impl ResponseError for ErrWrapper {
     fn error_response(&self) -> HttpResponse {
-        match self {
-            DbError::Validation(s) | DbError::Serialization(s) | DbError::Conversion(s) => {
-                HttpResponse::BadRequest().json(ApiError::Msg(s.into()))
+        let ctx = self.err.downcast_ref::<ErrorCtx>();
+        if let Some(ctx) = ctx {
+            match ctx {
+                ErrorCtx::Validation(s) => HttpResponse::BadRequest().json(ApiError::Msg(s.into())),
             }
-            DbError::Rocks(e) => {
-                HttpResponse::InternalServerError().json(ApiError::Msg(e.to_string()))
-            }
-            DbError::Config(e) => {
-                HttpResponse::InternalServerError().json(ApiError::Msg(e.to_string()))
-            }
+        } else {
+            HttpResponse::InternalServerError().json(ApiError::Msg(self.to_string()))
         }
     }
 }
@@ -186,7 +183,7 @@ async fn main() -> std::io::Result<()> {
     let db_cfg = load_db_config(&path_cfg.config_path).expect("Can't load service config");
     info!("Loaded db configuration = {:#?}", &db_cfg);
 
-    let db_manager = DbManager::new(db_cfg)?;
+    let db_manager = DbManager::new(db_cfg).map_err(convert_err)?;
     let db_manager = web::Data::new(db_manager);
 
     let prometheus = init_prometheus();

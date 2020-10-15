@@ -5,7 +5,7 @@ use std::{fs, thread};
 use actix_web::dev::ServiceResponse;
 use actix_web::http::StatusCode;
 use actix_web::rt as actix_rt;
-use actix_web::{test, web, App, Error};
+use actix_web::{test, web, App};
 
 use crate::config::{DbConfig, RocksDbConfig};
 use crate::conversion::bytes_to_str;
@@ -42,7 +42,7 @@ impl Drop for DbManager {
 }
 
 #[actix_rt::test]
-async fn should_open_and_close_db() -> Result<(), Error> {
+async fn should_open_and_close_db() -> anyhow::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "full");
 
     let db_manager = DbManager::new(DbConfig::new_per_test_defaults())?;
@@ -85,7 +85,7 @@ async fn should_open_and_close_db() -> Result<(), Error> {
 }
 
 #[actix_rt::test]
-async fn should_add_and_delete_record() -> Result<(), Error> {
+async fn should_add_and_delete_record() -> anyhow::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "full");
 
     let db_manager = DbManager::new(DbConfig::new_per_test_defaults())?;
@@ -146,7 +146,7 @@ async fn should_add_and_delete_record() -> Result<(), Error> {
 }
 
 #[actix_rt::test]
-async fn should_expire_record() -> Result<(), Error> {
+async fn should_expire_record() -> anyhow::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "full");
 
     let db_manager = DbManager::new(DbConfig::new_per_test_defaults())?;
@@ -210,7 +210,7 @@ async fn should_expire_record() -> Result<(), Error> {
 }
 
 #[actix_rt::test]
-async fn should_check_service_status() -> Result<(), Error> {
+async fn should_check_service_status() -> anyhow::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "full");
 
     let db_manager = DbManager::new(DbConfig::new_per_test_defaults())?;
@@ -233,7 +233,7 @@ async fn should_check_service_status() -> Result<(), Error> {
 }
 
 #[actix_rt::test]
-async fn should_handle_404() -> Result<(), Error> {
+async fn should_handle_404() -> anyhow::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "full");
 
     let db_manager = DbManager::new(DbConfig::new_per_test_defaults())?;
@@ -256,7 +256,7 @@ async fn should_handle_404() -> Result<(), Error> {
     Ok(())
 }
 
-fn response_as_str(res: ServiceResponse<Body>) -> Conversion<String> {
+fn response_as_str(res: ServiceResponse<Body>) -> anyhow::Result<String> {
     match res.response().body().as_ref() {
         Some(Body::Bytes(bytes)) => bytes_to_str(bytes),
         _ => Ok("empty".to_string()),

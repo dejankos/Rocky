@@ -1,11 +1,8 @@
-use std::error;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use actix_web::http::HeaderValue;
 
 use crate::db::Data;
-
-pub type Conversion<T> = Result<T, Box<dyn error::Error>>;
 
 pub trait IntoBytes<T> {
     fn as_bytes(&self) -> bincode::Result<Vec<u8>>;
@@ -27,15 +24,15 @@ impl FromBytes<Data> for Vec<u8> {
     }
 }
 
-pub fn bytes_to_str(bytes: &[u8]) -> Conversion<String> {
+pub fn bytes_to_str(bytes: &[u8]) -> anyhow::Result<String> {
     Ok(String::from_utf8(bytes.to_vec())?)
 }
 
-pub fn convert(h: &HeaderValue) -> Conversion<u128> {
+pub fn convert(h: &HeaderValue) -> anyhow::Result<u128> {
     Ok(h.to_str()?.parse::<u128>()?)
 }
 
-pub fn current_ms() -> Conversion<u128> {
+pub fn current_ms() -> anyhow::Result<u128> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())
 }
 
