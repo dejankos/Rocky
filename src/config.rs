@@ -1,4 +1,3 @@
-use confy::ConfyError;
 use rocksdb::{BlockBasedIndexType, BlockBasedOptions, Cache, DBCompactionStyle, Options};
 use serde::{Deserialize, Serialize};
 
@@ -155,12 +154,12 @@ fn block_based_opts(cfg: &RocksDbConfig) -> BlockBasedOptions {
     }
 }
 
-pub fn load_db_config(cfg_path: &str) -> Result<DbConfig, ConfyError> {
+pub fn load_db_config(cfg_path: &str) -> anyhow::Result<DbConfig> {
     let rocks_cfg = confy::load_path(format!("{}/db_config.toml", cfg_path))?;
     Ok(DbConfig::new(rocks_cfg))
 }
 
-pub fn load_service_config(cfg_path: &str) -> Result<ServiceConfig, ConfyError> {
+pub fn load_service_config(cfg_path: &str) -> anyhow::Result<ServiceConfig> {
     Ok(confy::load_path(format!(
         "{}/service_config.toml",
         cfg_path

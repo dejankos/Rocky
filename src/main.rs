@@ -10,6 +10,7 @@ use actix_web::web::Bytes;
 use actix_web::{delete, dev, get, http, post, HttpRequest, HttpResponse, ResponseError};
 use actix_web::{web, App, HttpServer};
 use actix_web_prom::PrometheusMetrics;
+use anyhow::anyhow;
 use log::LevelFilter;
 use serde::Deserialize;
 use simplelog::{ConfigBuilder, TermLogger, TerminalMode, ThreadLogMode, WriteLogger};
@@ -18,7 +19,7 @@ use structopt::StructOpt;
 use crate::config::{load_db_config, load_service_config};
 use crate::conversion::{convert, current_ms};
 use crate::db::DbManager;
-use crate::errors::{convert_err, ApiError, ErrWrapper, ErrorCtx};
+use crate::errors::{ApiError, ErrWrapper, ErrorCtx};
 
 mod errors;
 
@@ -53,11 +54,11 @@ struct PathVal {
 }
 
 trait Expiration {
-    fn calc_expire(&self) -> Response<u128>;
+    fn calc_expire(&self) -> anyhow::Result<u128>;
 }
 
 impl Expiration for HttpRequest {
-    fn calc_expire(&self) -> Response<u128> {
+    fn calc_expire(&self) -> anyhow::Result<u128> {
         self.headers()
             .get(TTL_HEADER)
             .map(|h| Ok(current_ms()? + convert(h)?))
@@ -169,7 +170,7 @@ async fn health() -> HttpResponse {
 
 // main thread will panic! if config can't be initialized
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> anyhow::Result<()> {
     std::env::set_var("RUST_LOG", "actix_web=error");
     std::env::set_var("RUST_BACKTRACE", "1");
 
@@ -183,7 +184,7 @@ async fn main() -> std::io::Result<()> {
     let db_cfg = load_db_config(&path_cfg.config_path).expect("Can't load service config");
     info!("Loaded db configuration = {:#?}", &db_cfg);
 
-    let db_manager = DbManager::new(db_cfg).map_err(convert_err)?;
+    let db_manager = DbManager::new(db_cfg)?;
     let db_manager = web::Data::new(db_manager);
 
     let prometheus = init_prometheus();
@@ -205,6 +206,7 @@ async fn main() -> std::io::Result<()> {
     .shutdown_timeout(60)
     .run()
     .await
+    .map_err(|e| anyhow!("Startup failed {}", e))
 }
 
 fn init_prometheus() -> PrometheusMetrics {

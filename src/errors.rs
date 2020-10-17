@@ -1,6 +1,5 @@
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::io::ErrorKind;
 
 use serde::{Deserialize, Serialize};
 
@@ -64,13 +63,5 @@ impl From<ApiError> for String {
 impl From<anyhow::Error> for ErrWrapper {
     fn from(err: anyhow::Error) -> ErrWrapper {
         ErrWrapper { err }
-    }
-}
-
-pub fn convert_err(any: anyhow::Error) -> std::io::Error {
-    if let Some(err) = any.downcast::<std::io::Error>().err() {
-        std::io::Error::new(ErrorKind::Other, err)
-    } else {
-        std::io::Error::from(ErrorKind::Other)
     }
 }
