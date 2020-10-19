@@ -121,7 +121,6 @@ Payload: 1kb
 ### TODO
  - [ ] code coverage
  - [ ] docker 
- - [ ] range scan 
 
 ## Licence
 Rocky is licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)
