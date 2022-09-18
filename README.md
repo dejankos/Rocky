@@ -1,5 +1,4 @@
-[![Build Status](https://travis-ci.com/dejankos/Rocky.svg?branch=master)](https://travis-ci.com/dejankos/Rocky)
-
+[![Rust](https://github.com/dejankos/Rocky/actions/workflows/rust.yml/badge.svg)](https://github.com/dejankos/Rocky/actions/workflows/rust.yml)
 # Rocky
 Rocky is a key/value storage service based on facebook [RocksDb](https://github.com/facebook/rocksdb/wiki) with support for multiple databases and record expiration.
 
